@@ -5,7 +5,7 @@
 const CHUNK_SIZE = 50;
 const DELAY_MS   = 3000;
 const TAB_LOAD_TIMEOUT_MS = 30000;
-const POST_LOAD_WAIT_MS   = 2500; // wait for LinkedIn's dynamic content to settle
+const POST_LOAD_WAIT_MS   = 3500; // wait for LinkedIn's dynamic content to settle (Edge needs a bit more)
 
 // ── State ──────────────────────────────────────
 let state = {
@@ -179,39 +179,93 @@ function waitForTabLoad(tabId) {
 // ── Page Info Scraper (runs inside the tab) ─────
 // This function is serialised and injected — no closure variables allowed.
 function scrapePageInfo() {
-  // ── Login detection ──────────────────────────
   const href = window.location.href;
+
+  // ── Hard auth-wall check ─────────────────────
+  // If LinkedIn redirected us to a login/auth page, we're definitely logged out.
   const onAuthPage = href.includes('/login') ||
                      href.includes('/checkpoint') ||
                      href.includes('/authwall') ||
-                     href.includes('/signup');
+                     href.includes('/signup') ||
+                     href.includes('/uas/login');
 
-  // The global nav "Me" icon is only rendered when logged in
-  const navMe = document.querySelector('.global-nav__me') ||
-                document.querySelector('[data-control-name="identity_welcome_message"]');
+  if (onAuthPage) {
+    return { isLoggedIn: false, name: '', reason: 'auth_redirect' };
+  }
 
-  const isLoggedIn = !onAuthPage && !!navMe;
+  // ── Multi-signal login detection ─────────────
+  // LinkedIn changes class names frequently. We cast a wide net across
+  // every known signal rather than relying on a single selector.
+
+  const signals = [
+    // Global nav container (present since 2019, still present 2025)
+    () => !!document.querySelector('#global-nav'),
+    () => !!document.querySelector('.global-nav'),
+    // Top nav authenticated elements
+    () => !!document.querySelector('nav[aria-label="Global Navigation"]'),
+    // "Me" dropdown — class name varies across LinkedIn versions
+    () => !!document.querySelector('.global-nav__me'),
+    () => !!document.querySelector('[data-control-name="identity_welcome_message"]'),
+    () => !!document.querySelector('[data-control-name="nav.settings"]'),
+    // Profile photo thumbnail in nav (only rendered when logged in)
+    () => !!document.querySelector('.global-nav__me-photo'),
+    () => !!document.querySelector('.nav-settings__profile-photo'),
+    // Scaffold layout only exists on authenticated pages
+    () => !!document.querySelector('.scaffold-layout'),
+    () => !!document.querySelector('.application-outlet'),
+    // "Start a post" button on feed / profile
+    () => !!document.querySelector('[data-control-name="share.sharebox_focus_trigger"]'),
+    // Authenticated cookie: li_at is LinkedIn's session token
+    () => document.cookie.split(';').some(c => c.trim().startsWith('li_at=')),
+    // JSESSIONID is also set on authenticated sessions
+    () => document.cookie.split(';').some(c => c.trim().startsWith('JSESSIONID=')),
+    // The main feed or profile content wrapper
+    () => !!document.querySelector('.feed-container-theme'),
+    () => !!document.querySelector('.profile-detail'),
+    // Any element with LinkedIn's authenticated data attribute
+    () => !!document.querySelector('[data-member-id]'),
+    // "Add to profile" / connection buttons only appear when logged in
+    () => !!document.querySelector('.pvs-profile-actions'),
+    () => !!document.querySelector('.pv-top-card--list'),
+  ];
+
+  // Require at least 1 positive signal — if LinkedIn is loaded (not an auth page)
+  // and any logged-in indicator is present, treat as logged in.
+  let signalCount = 0;
+  for (const check of signals) {
+    try { if (check()) signalCount++; } catch {}
+  }
+
+  // Also accept if we're on a /in/ profile URL with page content
+  // (LinkedIn sometimes loads profile even before full nav renders)
+  const isProfilePage = href.includes('/in/') || href.includes('/pub/');
+  const hasBodyContent = document.body && document.body.innerText.length > 500;
+  const urlSignal = isProfilePage && hasBodyContent;
+
+  const isLoggedIn = signalCount >= 1 || urlSignal;
 
   // ── Name extraction ──────────────────────────
-  // LinkedIn profile pages use h1 inside the top card
-  const selectors = [
-    'h1.text-heading-xlarge',
-    '.pv-text-details__left-panel h1',
+  const nameSelectors = [
+    'h1.text-heading-xlarge',                      // current LinkedIn (2024–25)
+    '.pv-text-details__left-panel h1',             // older layout
     '.artdeco-entity-lockup__title h1',
+    '.ph5 h1',                                     // profile header container
     'section.artdeco-card h1',
-    'h1'
+    '.profile-info-subheader h1',
+    'main h1',                                     // broad fallback
+    'h1',                                          // last resort
   ];
 
   let name = '';
-  for (const sel of selectors) {
+  for (const sel of nameSelectors) {
     const el = document.querySelector(sel);
-    if (el && el.innerText.trim().length > 0) {
+    if (el && el.innerText.trim().length > 1) {
       name = el.innerText.trim();
       break;
     }
   }
 
-  return { isLoggedIn, name };
+  return { isLoggedIn, name, signalCount, urlSignal };
 }
 
 // ── CDP PDF Generation ──────────────────────────
