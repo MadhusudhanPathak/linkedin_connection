@@ -180,7 +180,7 @@ chrome.runtime.onMessage.addListener((msg) => {
       if (result.success) {
         stats.done++;
         statDone.textContent = stats.done;
-        addLog('ok', result.name || result.url, result.filename);
+        addLog('ok', result.name || result.url, '');
       } else {
         stats.fail++;
         statFail.textContent = stats.fail;
@@ -241,12 +241,14 @@ function setRunningState(runState) {
   const paused  = runState === 'paused';
   const idle    = runState === 'idle';
 
+  // Hide the CSV upload area once a run starts
+  $('upload-section').classList.toggle('hidden', !idle);
+
   startBtn.classList.toggle('hidden',  !idle);
   pauseBtn.classList.toggle('hidden',  !running);
   resumeBtn.classList.toggle('hidden', !paused);
   stopBtn.classList.toggle('hidden',   idle);
 
-  // Show progress/stats/log once started
   if (running || paused) {
     progressSect.classList.remove('hidden');
     statsRow.classList.remove('hidden');

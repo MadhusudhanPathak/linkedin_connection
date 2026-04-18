@@ -131,8 +131,8 @@ async function runNext() {
 
 // ── Profile Processor ───────────────────────────
 async function processProfile(url) {
-  let tabId            = null;
-  let filenameListener = null;
+  let tabId           = null;
+  let createdListener = null;
 
   try {
     // 1. Open profile in a background tab
@@ -143,64 +143,55 @@ async function processProfile(url) {
     await waitForTabLoad(tabId);
     await sleep(PAGE_SETTLE_MS);
 
-    // 3. Verify login + scrape connection name
+    // 3. Verify login
     const [{ result: pageInfo }] = await chrome.scripting.executeScript({
       target: { tabId },
       func:   scrapePageInfo
     });
-
     if (!pageInfo.isLoggedIn) throw new Error('NOT_LOGGED_IN');
 
-    const safeName        = sanitizeFilename(pageInfo.name || 'Unknown_Profile');
-    const desiredFilename = `LinkedIn_${safeName}.pdf`;
-
-    // 4. Arm the download rename interceptor BEFORE clicking anything
-    //    onDeterminingFilename fires just as the browser is about to save the file,
-    //    giving us the chance to supply our desired filename.
+    // 4. Arm onCreated listener BEFORE clicking so we catch the download ID
+    //    the moment LinkedIn triggers it. No renaming — just track the ID.
     let capturedDownloadId = null;
-
-    filenameListener = (item, suggest) => {
-      const looksLikePdf =
+    createdListener = (item) => {
+      const isPdf =
         item.mime === 'application/pdf' ||
-        (item.filename || '').toLowerCase().endsWith('.pdf') ||
-        (item.url     || '').toLowerCase().includes('.pdf');
-
-      if (looksLikePdf) {
+        (item.filename || '').toLowerCase().endsWith('.pdf');
+      if (isPdf) {
         capturedDownloadId = item.id;
-        suggest({ filename: desiredFilename, conflictAction: 'uniquify' });
-        chrome.downloads.onDeterminingFilename.removeListener(filenameListener);
-        filenameListener = null;
+        chrome.downloads.onCreated.removeListener(createdListener);
+        createdListener = null;
       }
     };
-    chrome.downloads.onDeterminingFilename.addListener(filenameListener);
+    chrome.downloads.onCreated.addListener(createdListener);
 
-    // 5. Click More → Save to PDF inside the tab
+    // 5. Click More → Save to PDF
     const [{ result: clickResult }] = await chrome.scripting.executeScript({
       target: { tabId },
       func:   clickMoreThenSaveToPDF,
       args:   [DROPDOWN_SETTLE_MS]
     });
+    if (!clickResult.success) throw new Error(clickResult.reason || 'Could not click Save to PDF');
 
-    if (!clickResult.success) {
-      throw new Error(clickResult.reason || 'Could not click Save to PDF');
-    }
-
-    // 6. Wait for the download to begin (LinkedIn generates the PDF server-side)
+    // 6. Wait for the download to begin (LinkedIn generates PDF server-side)
     await waitForCondition(
       () => capturedDownloadId !== null,
       DOWNLOAD_START_MS,
-      'LinkedIn did not start a PDF download. Try visiting the profile manually to check.'
+      'LinkedIn did not start a PDF download within 30s.'
     );
 
-    // 7. Wait for the download to finish writing to disk
+    // 7. Wait for download to finish writing to disk — THEN close the tab.
+    //    This is what prevents the "move to next before download finished" bug.
     await waitForDownloadComplete(capturedDownloadId);
 
-    return { url, success: true, name: pageInfo.name, filename: desiredFilename };
+    return { url, success: true, name: pageInfo.name };
 
   } finally {
-    if (filenameListener) {
-      try { chrome.downloads.onDeterminingFilename.removeListener(filenameListener); } catch {}
+    // Always clean up listeners
+    if (createdListener) {
+      try { chrome.downloads.onCreated.removeListener(createdListener); } catch {}
     }
+    // Tab is closed here — guaranteed to run after download completes (or on error)
     if (tabId !== null) {
       try { await chrome.tabs.remove(tabId); } catch {}
     }
@@ -385,13 +376,6 @@ function waitForCondition(conditionFn, timeout, timeoutMsg) {
 }
 
 // ── Utilities ───────────────────────────────────
-function sanitizeFilename(name) {
-  return name
-    .replace(/[\\/:*?"<>|]/g, '')
-    .replace(/\s+/g, '_')
-    .substring(0, 100);
-}
-
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 function broadcast(msg) { chrome.runtime.sendMessage(msg).catch(() => {}); }
