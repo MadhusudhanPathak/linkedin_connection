@@ -7,10 +7,10 @@
 const CHUNK_SIZE          = 50;
 const DELAY_MS            = 3000;
 const TAB_LOAD_TIMEOUT_MS = 30000;
-const PAGE_SETTLE_MS      = 3500;  // time after load for LinkedIn JS to render
-const DROPDOWN_SETTLE_MS  = 1200;  // time for More dropdown animation to open
-const DOWNLOAD_START_MS   = 30000; // max wait for download to begin after clicking
-const DOWNLOAD_FINISH_MS  = 60000; // max wait for download to complete
+const PAGE_SETTLE_MS      = 3500;   // time after load for LinkedIn JS to render
+const DROPDOWN_SETTLE_MS  = 1500;   // time for More dropdown animation to open (increased)
+const DOWNLOAD_START_MS   = 45000;  // max wait for download to begin after clicking (increased from 30s)
+const DOWNLOAD_FINISH_MS  = 60000;  // max wait for download to complete
 
 // ── State ──────────────────────────────────────
 let state = {
@@ -154,9 +154,21 @@ async function processProfile(url) {
     //    the moment LinkedIn triggers it. No renaming — just track the ID.
     let capturedDownloadId = null;
     createdListener = (item) => {
+      // If already captured, ignore subsequent downloads
+      if (capturedDownloadId !== null) return;
+      
+      // Check for PDF using multiple methods to handle LinkedIn's various response formats
+      const filename = (item.filename || '').toLowerCase();
+      const mime = (item.mime || '').toLowerCase();
+      
+      // PDF detection: check MIME type, filename extension, or common patterns
       const isPdf =
-        item.mime === 'application/pdf' ||
-        (item.filename || '').toLowerCase().endsWith('.pdf');
+        mime === 'application/pdf' ||
+        mime.includes('pdf') ||
+        filename.endsWith('.pdf') ||
+        (filename.includes('profile') && filename.length > 0) ||
+        filename.includes('linkedin');
+      
       if (isPdf) {
         capturedDownloadId = item.id;
         chrome.downloads.onCreated.removeListener(createdListener);
@@ -172,6 +184,9 @@ async function processProfile(url) {
       args:   [DROPDOWN_SETTLE_MS]
     });
     if (!clickResult.success) throw new Error(clickResult.reason || 'Could not click Save to PDF');
+
+    // 5b. Extra wait after the click to allow LinkedIn server to generate PDF
+    await sleep(500);
 
     // 6. Wait for the download to begin (LinkedIn generates PDF server-side)
     await waitForCondition(
@@ -263,6 +278,7 @@ async function clickMoreThenSaveToPDF(dropdownSettleMs) {
   }
 
   savePdfEl.click();
+  await sleep(500); // Brief wait after clicking to ensure download triggers
   return { success: true };
 }
 

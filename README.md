@@ -1,6 +1,6 @@
 # LinkedIn Profile PDF Downloader
 
-A browser extension for **Microsoft Edge, Chrome, and Brave** that batch-downloads your LinkedIn connections' profiles as PDFs — exactly as if you clicked **More → Save to PDF** on each one yourself.
+A browser extension for **Microsoft Edge, Chrome, and Brave** that batch-downloads your LinkedIn connections' profiles as PDFs, exactly as if you clicked **More → Save to PDF** on each one yourself.
 
 No external scripts, no servers, no Puppeteer. Runs entirely inside your browser.
 
@@ -20,7 +20,7 @@ Profiles are processed **one at a time**, in strict sequence. The next profile o
 
 ## Installation
 
-### Step 1 — Enable Developer Mode
+### Step 1, Enable Developer Mode
 
 | Browser | URL to open |
 |---|---|
@@ -30,10 +30,10 @@ Profiles are processed **one at a time**, in strict sequence. The next profile o
 
 Toggle **Developer mode** on (top-right corner of the page).
 
-### Step 2 — Load the Extension
+### Step 2, Load the Extension
 
 1. Click **Load unpacked**
-2. Select the `linkedin-pdf-downloader` folder (the unzipped folder, not the zip file)
+2. Select the `linkedin_connection` folder (the unzipped folder, not the zip file)
 3. The extension icon will appear in your browser toolbar
 
 ---
@@ -46,7 +46,9 @@ Open LinkedIn in any tab and make sure you're fully logged in **before** launchi
 
 ### 2. Prepare your CSV
 
-Create a `.csv` file with LinkedIn profile URLs. The extension auto-detects which column contains the URLs — extra columns, headers, and blank lines are all handled gracefully.
+Create a `.csv` file with LinkedIn profile URLs. The extension auto-detects which column contains the URLs, extra columns, headers, and blank lines are all handled gracefully.
+
+You can use the `Connections.csv` that you get from LinkedIn. You can request your complete connection list from `https://www.linkedin.com/mypreferences/d/download-my-data`, make sure to request for full data.
 
 **Accepted URL formats:**
 ```
@@ -55,7 +57,7 @@ https://www.linkedin.com/in/john-smith-12345
 www.linkedin.com/in/someone
 ```
 
-**Example CSV with mixed columns — works fine:**
+**Example CSV with mixed columns, works fine:**
 ```
 Name, Profile URL, Company
 Jane Doe, https://www.linkedin.com/in/janedoe, Acme Corp
@@ -84,7 +86,7 @@ The upload area disappears once a run starts to keep the UI clean.
 |---|---|
 | **Pause** | Finishes the current profile, then holds. Click Resume to continue from where it left off. |
 | **Resume** | Picks up from the next profile in the list. |
-| **Stop** | Halts after the current profile. Resets the session — you'll need to re-upload the CSV to start again. |
+| **Stop** | Halts after the current profile. Resets the session, you'll need to re-upload the CSV to start again. |
 
 ---
 
@@ -102,15 +104,9 @@ The extension is deliberately paced to behave like a human:
 
 ---
 
-## Downloaded Files
-
-PDFs are saved to your browser's default **Downloads folder**. Filenames are whatever LinkedIn generates — typically `FirstName LastName Profile.pdf`. If a file with the same name already exists, the browser appends a number automatically (e.g. `Jane Doe Profile (1).pdf`).
-
----
-
 ## Chunks
 
-Profiles are processed in logical groups of 50. The extension displays which chunk it's on (e.g. "Chunk 2 / 6") and logs a message at each chunk boundary. There is no automatic pause between chunks — this is purely a progress display feature. If you want a break between chunks, use the **Pause** button.
+Profiles are processed in logical groups of 50. The extension displays which chunk it's on (e.g. "Chunk 2 / 6") and logs a message at each chunk boundary. There is no automatic pause between chunks, this is purely a progress display feature. If you want a break between chunks, use the **Pause** button.
 
 ---
 
@@ -158,14 +154,14 @@ Go to your browser's extensions page, find LinkedIn PDF Downloader, and make sur
 | `alarms` | Keep the background service worker alive during long runs |
 | `storage` | Reserved for future use (e.g. persisting run state across sessions) |
 
-The extension only accesses `https://www.linkedin.com/*` — no other sites.
+The extension only accesses `https://www.linkedin.com/*`, no other sites.
 
 ---
 
 ## Limitations
 
 - **Personal use only.** This extension is intended for downloading profiles of your own connections. Automated access may conflict with LinkedIn's Terms of Service. Use it responsibly and avoid running it on thousands of profiles in a single session.
-- **One profile at a time.** There is no parallelism by design — running multiple tabs simultaneously would be more likely to trigger LinkedIn's rate limiting.
+- **One profile at a time.** There is no parallelism by design, running multiple tabs simultaneously would be more likely to trigger LinkedIn's rate limiting.
 - **Requires an active LinkedIn session.** The extension does not handle login, credentials, or 2FA. You must be logged in before starting.
 - **LinkedIn DOM changes may break button detection.** If LinkedIn redesigns their profile page, the "More" button or "Save to PDF" dropdown selectors may need updating. See `AGENT.md` for the full selector list.
 
@@ -176,7 +172,7 @@ The extension only accesses `https://www.linkedin.com/*` — no other sites.
 ```
 linkedin-pdf-downloader/
 ├── manifest.json     # Extension config (Manifest V3)
-├── background.js     # Service worker — all automation logic
+├── background.js     # Service worker, all automation logic
 ├── popup.html        # Extension popup UI
 ├── popup.css         # Popup styles
 ├── popup.js          # Popup logic and CSV parser
@@ -189,4 +185,4 @@ linkedin-pdf-downloader/
     └── icon128.png
 ```
 
-For a full technical reference — architecture, state shape, injected function documentation, selector lists, and what was tried and abandoned — see `AGENT.md`.
+For a full technical reference, architecture, state shape, injected function documentation, selector lists, and what was tried and abandoned, see `AGENT.md`.
