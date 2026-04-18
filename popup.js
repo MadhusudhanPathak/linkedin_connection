@@ -21,6 +21,8 @@ const progressFrac  = $('progress-frac');
 const progressBar   = $('progress-bar');
 const currentUrl    = $('current-url');
 const startBtn      = $('start-btn');
+const pauseBtn      = $('pause-btn');
+const resumeBtn     = $('resume-btn');
 const stopBtn       = $('stop-btn');
 const statsRow      = $('stats-row');
 const statDone      = $('stat-done');
@@ -119,19 +121,33 @@ startBtn.addEventListener('click', () => {
 
   stats = { done: 0, fail: 0 };
   resetUI();
-  setRunningState(true);
+  setRunningState('running');
 
   chrome.runtime.sendMessage({ type: 'START', urls: parsedUrls }, (resp) => {
     if (!resp || !resp.ok) {
       showAlert(resp?.reason || 'Failed to start. Try again.', 'error');
-      setRunningState(false);
+      setRunningState('idle');
     }
   });
 });
 
+pauseBtn.addEventListener('click', () => {
+  chrome.runtime.sendMessage({ type: 'PAUSE' });
+  setRunningState('paused');
+  setDot('paused');
+  addLog('pause', '— Paused —', 'Click Resume to continue');
+});
+
+resumeBtn.addEventListener('click', () => {
+  chrome.runtime.sendMessage({ type: 'RESUME' });
+  setRunningState('running');
+  setDot('running');
+  addLog('resume', '— Resumed —', '');
+});
+
 stopBtn.addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'STOP' });
-  setRunningState(false);
+  setRunningState('idle');
   setDot('idle');
   addLog('stop', '— Stopped by user —', '');
 });
@@ -145,9 +161,9 @@ chrome.runtime.onMessage.addListener((msg) => {
   switch (msg.type) {
 
     case 'PROCESSING': {
-      const chunk = Math.floor(msg.currentIndex / CHUNK_SIZE) + 1;
+      const chunk  = Math.floor(msg.currentIndex / CHUNK_SIZE) + 1;
       const chunks = Math.ceil(msg.total / CHUNK_SIZE);
-      chunkBadge.textContent = `Chunk ${chunk} / ${chunks}`;
+      chunkBadge.textContent   = `Chunk ${chunk} / ${chunks}`;
       progressFrac.textContent = `${msg.currentIndex + 1} / ${msg.total}`;
       progressBar.style.width  = `${((msg.currentIndex + 1) / msg.total) * 100}%`;
       currentUrl.textContent   = msg.url;
@@ -155,10 +171,9 @@ chrome.runtime.onMessage.addListener((msg) => {
       break;
     }
 
-    case 'CHUNK_DONE': {
+    case 'CHUNK_DONE':
       addLog('chunk', `Chunk ${msg.chunk} complete — ${msg.currentIndex} profiles processed`, '');
       break;
-    }
 
     case 'RESULT': {
       const { result } = msg;
@@ -174,26 +189,33 @@ chrome.runtime.onMessage.addListener((msg) => {
       break;
     }
 
-    case 'NOT_LOGGED_IN': {
-      setRunningState(false);
+    case 'PAUSED':
+      setRunningState('paused');
+      setDot('paused');
+      currentUrl.textContent = '⏸ Paused — click Resume to continue';
+      break;
+
+    case 'RESUMED':
+      setRunningState('running');
+      setDot('running');
+      break;
+
+    case 'NOT_LOGGED_IN':
+      setRunningState('idle');
       setDot('error');
-      showAlert(
-        'LinkedIn session not found. Please log in to LinkedIn in this browser and try again.',
-        'error'
-      );
+      showAlert('LinkedIn session not found. Please log in to LinkedIn in this browser and try again.', 'error');
       addLog('fail', '— Processing halted —', 'Not logged in to LinkedIn');
       break;
-    }
 
     case 'DONE': {
-      setRunningState(false);
+      setRunningState('idle');
       setDot('done');
       const elapsed = formatTime(msg.elapsed);
       addLog('done', `All done! ${stats.done} saved, ${stats.fail} failed`, `Took ${elapsed}`);
-      progressBar.style.width = '100%';
+      progressBar.style.width  = '100%';
       progressFrac.textContent = `${msg.results.length} / ${msg.results.length}`;
-      currentUrl.textContent = '✅ Complete';
-      statRemain.textContent = '0';
+      currentUrl.textContent   = '✅ Complete';
+      statRemain.textContent   = '0';
       break;
     }
   }
@@ -205,7 +227,7 @@ function resetUI() {
   statDone.textContent   = '0';
   statFail.textContent   = '0';
   statRemain.textContent = parsedUrls.length;
-  progressBar.style.width = '0%';
+  progressBar.style.width  = '0%';
   progressFrac.textContent = `0 / ${parsedUrls.length}`;
   currentUrl.textContent = '—';
   const chunks = Math.ceil(parsedUrls.length / CHUNK_SIZE);
@@ -213,19 +235,29 @@ function resetUI() {
   hideAlert();
 }
 
-function setRunningState(running) {
-  startBtn.classList.toggle('hidden', running);
-  stopBtn.classList.toggle('hidden', !running);
-  progressSect.classList.toggle('hidden', false);
-  statsRow.classList.toggle('hidden', false);
-  logSection.classList.toggle('hidden', false);
-  if (running) setDot('running');
+// state: 'idle' | 'running' | 'paused'
+function setRunningState(runState) {
+  const running = runState === 'running';
+  const paused  = runState === 'paused';
+  const idle    = runState === 'idle';
+
+  startBtn.classList.toggle('hidden',  !idle);
+  pauseBtn.classList.toggle('hidden',  !running);
+  resumeBtn.classList.toggle('hidden', !paused);
+  stopBtn.classList.toggle('hidden',   idle);
+
+  // Show progress/stats/log once started
+  if (running || paused) {
+    progressSect.classList.remove('hidden');
+    statsRow.classList.remove('hidden');
+    logSection.classList.remove('hidden');
+  }
 }
 
 function setDot(state) {
   statusDot.className = 'status-dot';
   if (state !== 'idle') statusDot.classList.add(state);
-  const labels = { running: 'Running…', done: 'Complete', error: 'Error', idle: 'Idle' };
+  const labels = { running: 'Running…', paused: 'Paused', done: 'Complete', error: 'Error', idle: 'Idle' };
   statusDot.title = labels[state] || 'Idle';
 }
 
@@ -241,11 +273,13 @@ function hideAlert() {
 
 function addLog(type, primary, detail) {
   const icons = {
-    ok:    '✅',
-    fail:  '❌',
-    chunk: '📦',
-    stop:  '⏹️',
-    done:  '🎉'
+    ok:     '✅',
+    fail:   '❌',
+    chunk:  '📦',
+    stop:   '⏹️',
+    pause:  '⏸️',
+    resume: '▶️',
+    done:   '🎉'
   };
 
   const li = document.createElement('li');
@@ -283,12 +317,23 @@ function formatTime(ms) {
 // ── Sync with background on popup open ─────────
 chrome.runtime.sendMessage({ type: 'GET_STATE' }, (state) => {
   if (!state || !state.isRunning) return;
-  // Resume showing running UI if background is mid-run
-  setRunningState(true);
   parsedUrls = state.urls;
   stats.done = state.results.filter(r => r.success).length;
   stats.fail = state.results.filter(r => !r.success).length;
   statDone.textContent   = stats.done;
   statFail.textContent   = stats.fail;
   statRemain.textContent = state.urls.length - state.currentIndex;
+
+  progressSect.classList.remove('hidden');
+  statsRow.classList.remove('hidden');
+  logSection.classList.remove('hidden');
+
+  if (state.isPaused) {
+    setRunningState('paused');
+    setDot('paused');
+    currentUrl.textContent = '⏸ Paused — click Resume to continue';
+  } else {
+    setRunningState('running');
+    setDot('running');
+  }
 });

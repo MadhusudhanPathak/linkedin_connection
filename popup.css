@@ -86,6 +86,7 @@ body {
   transition: background .3s;
 }
 .status-dot.running  { background: var(--teal);  box-shadow: 0 0 0 3px var(--teal-lt); }
+.status-dot.paused   { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-lt); }
 .status-dot.done     { background: var(--green); box-shadow: 0 0 0 3px var(--green-lt); }
 .status-dot.error    { background: var(--red);   box-shadow: 0 0 0 3px var(--red-lt); }
 
@@ -239,6 +240,18 @@ body {
   color: white;
 }
 .btn-primary:hover:not(:disabled) { background: var(--li-blue-dk); }
+
+.btn-warning {
+  background: var(--amber);
+  color: white;
+}
+.btn-warning:hover:not(:disabled) { background: #8f3f0a; }
+
+.btn-success {
+  background: var(--green);
+  color: white;
+}
+.btn-success:hover:not(:disabled) { background: #045a32; }
 
 .btn-danger {
   background: var(--red);

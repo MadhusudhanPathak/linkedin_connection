@@ -1,11 +1,16 @@
 // ─────────────────────────────────────────────
 //  LinkedIn PDF Downloader — Background Worker
+//  Strategy: click More → Save to PDF on each profile,
+//  intercept the download to rename it.
 // ─────────────────────────────────────────────
 
-const CHUNK_SIZE = 50;
-const DELAY_MS   = 3000;
+const CHUNK_SIZE          = 50;
+const DELAY_MS            = 3000;
 const TAB_LOAD_TIMEOUT_MS = 30000;
-const POST_LOAD_WAIT_MS   = 3500; // wait for LinkedIn's dynamic content to settle (Edge needs a bit more)
+const PAGE_SETTLE_MS      = 3500;  // time after load for LinkedIn JS to render
+const DROPDOWN_SETTLE_MS  = 1200;  // time for More dropdown animation to open
+const DOWNLOAD_START_MS   = 30000; // max wait for download to begin after clicking
+const DOWNLOAD_FINISH_MS  = 60000; // max wait for download to complete
 
 // ── State ──────────────────────────────────────
 let state = {
@@ -17,9 +22,7 @@ let state = {
   startTime:    null
 };
 
-// ── Keep-alive via alarms ───────────────────────
-// MV3 service workers are killed after ~30s of inactivity.
-// We create a recurring alarm to prevent that during a run.
+// ── Keep service worker alive during a run ──────
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'keepAlive' && state.isRunning) {
     chrome.alarms.create('keepAlive', { when: Date.now() + 20000 });
@@ -31,7 +34,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   switch (msg.type) {
 
     case 'START':
-      if (state.isRunning) { sendResponse({ ok: false, reason: 'Already running' }); return; }
+      if (state.isRunning) { sendResponse({ ok: false, reason: 'Already running' }); return true; }
       state = {
         isRunning:    true,
         isPaused:     false,
@@ -41,6 +44,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         startTime:    Date.now()
       };
       chrome.alarms.create('keepAlive', { when: Date.now() + 20000 });
+      runNext();
+      sendResponse({ ok: true });
+      break;
+
+    case 'PAUSE':
+      state.isPaused = true;
+      broadcast({ type: 'PAUSED', currentIndex: state.currentIndex, total: state.urls.length });
+      sendResponse({ ok: true });
+      break;
+
+    case 'RESUME':
+      if (!state.isRunning) { sendResponse({ ok: false, reason: 'Not running' }); return true; }
+      state.isPaused = false;
+      broadcast({ type: 'RESUMED' });
       runNext();
       sendResponse({ ok: true });
       break;
@@ -60,12 +77,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ ok: false, reason: 'Unknown message type' });
   }
 
-  return true; // keep sendResponse channel open
+  return true;
 });
 
 // ── Main Loop ───────────────────────────────────
 async function runNext() {
   if (!state.isRunning) return;
+  if (state.isPaused)   return; // resume() will call runNext() again
 
   const { urls, currentIndex } = state;
 
@@ -76,11 +94,9 @@ async function runNext() {
     return;
   }
 
-  // ── Chunk boundary pause ──────────────────────
+  // Chunk boundary notification
   if (currentIndex > 0 && currentIndex % CHUNK_SIZE === 0) {
-    const chunk = currentIndex / CHUNK_SIZE;
-    broadcast({ type: 'CHUNK_DONE', chunk, currentIndex, total: urls.length });
-    // No extra pause beyond the per-profile delay — chunk info is just cosmetic.
+    broadcast({ type: 'CHUNK_DONE', chunk: currentIndex / CHUNK_SIZE, currentIndex, total: urls.length });
   }
 
   const url = urls[currentIndex].trim();
@@ -93,76 +109,231 @@ async function runNext() {
     const reason = err.message || String(err);
     result = { url, success: false, reason };
 
-    // Hard stop: if user isn't logged in, halt everything
     if (reason === 'NOT_LOGGED_IN') {
       state.isRunning = false;
       chrome.alarms.clear('keepAlive');
-      broadcast({ type: 'NOT_LOGGED_IN', currentIndex, total: urls.length });
+      broadcast({ type: 'NOT_LOGGED_IN' });
       return;
     }
   }
 
   state.results.push(result);
   broadcast({ type: 'RESULT', result, currentIndex, total: urls.length });
-
   state.currentIndex++;
 
-  // Wait 3 s between profiles then continue
-  if (state.isRunning) {
-    setTimeout(runNext, DELAY_MS);
-  }
+  if (!state.isRunning) return;
+
+  // If user paused between profiles, hold here — resume() will restart
+  if (state.isPaused) return;
+
+  setTimeout(runNext, DELAY_MS);
 }
 
 // ── Profile Processor ───────────────────────────
 async function processProfile(url) {
-  let tabId;
+  let tabId            = null;
+  let filenameListener = null;
 
   try {
-    // 1. Open tab (background, not focused)
+    // 1. Open profile in a background tab
     const tab = await chrome.tabs.create({ url, active: false });
     tabId = tab.id;
 
-    // 2. Wait for full load
+    // 2. Wait for full page load + LinkedIn JS render time
     await waitForTabLoad(tabId);
+    await sleep(PAGE_SETTLE_MS);
 
-    // 3. Extra settle time (LinkedIn is heavily JS-rendered)
-    await sleep(POST_LOAD_WAIT_MS);
-
-    // 4. Check login + scrape name via injected script
+    // 3. Verify login + scrape connection name
     const [{ result: pageInfo }] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: scrapePageInfo
+      func:   scrapePageInfo
     });
 
-    if (!pageInfo.isLoggedIn) {
-      throw new Error('NOT_LOGGED_IN');
+    if (!pageInfo.isLoggedIn) throw new Error('NOT_LOGGED_IN');
+
+    const safeName        = sanitizeFilename(pageInfo.name || 'Unknown_Profile');
+    const desiredFilename = `LinkedIn_${safeName}.pdf`;
+
+    // 4. Arm the download rename interceptor BEFORE clicking anything
+    //    onDeterminingFilename fires just as the browser is about to save the file,
+    //    giving us the chance to supply our desired filename.
+    let capturedDownloadId = null;
+
+    filenameListener = (item, suggest) => {
+      const looksLikePdf =
+        item.mime === 'application/pdf' ||
+        (item.filename || '').toLowerCase().endsWith('.pdf') ||
+        (item.url     || '').toLowerCase().includes('.pdf');
+
+      if (looksLikePdf) {
+        capturedDownloadId = item.id;
+        suggest({ filename: desiredFilename, conflictAction: 'uniquify' });
+        chrome.downloads.onDeterminingFilename.removeListener(filenameListener);
+        filenameListener = null;
+      }
+    };
+    chrome.downloads.onDeterminingFilename.addListener(filenameListener);
+
+    // 5. Click More → Save to PDF inside the tab
+    const [{ result: clickResult }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func:   clickMoreThenSaveToPDF,
+      args:   [DROPDOWN_SETTLE_MS]
+    });
+
+    if (!clickResult.success) {
+      throw new Error(clickResult.reason || 'Could not click Save to PDF');
     }
 
-    const name = sanitizeFilename(pageInfo.name || 'Unknown_Profile');
+    // 6. Wait for the download to begin (LinkedIn generates the PDF server-side)
+    await waitForCondition(
+      () => capturedDownloadId !== null,
+      DOWNLOAD_START_MS,
+      'LinkedIn did not start a PDF download. Try visiting the profile manually to check.'
+    );
 
-    // 5. Generate PDF via Chrome DevTools Protocol
-    const base64Pdf = await printToPDF(tabId);
+    // 7. Wait for the download to finish writing to disk
+    await waitForDownloadComplete(capturedDownloadId);
 
-    // 6. Download to user's default downloads folder
-    const filename = `LinkedIn_${name}.pdf`;
-    await downloadBase64PDF(base64Pdf, filename);
-
-    return { url, success: true, name: pageInfo.name, filename };
+    return { url, success: true, name: pageInfo.name, filename: desiredFilename };
 
   } finally {
-    if (tabId != null) {
+    if (filenameListener) {
+      try { chrome.downloads.onDeterminingFilename.removeListener(filenameListener); } catch {}
+    }
+    if (tabId !== null) {
       try { await chrome.tabs.remove(tabId); } catch {}
     }
   }
 }
 
+// ── Injected: Click More → Save to PDF ─────────
+// IMPORTANT: This function is serialised & injected into the LinkedIn tab.
+//            It must be 100% self-contained — no closures, no external refs.
+async function clickMoreThenSaveToPDF(dropdownSettleMs) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ── Locate the "More" button ────────────────
+  // It's a <button> whose visible text is exactly "More".
+  const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+
+  const moreButton = allButtons.find((el) => {
+    const txt   = (el.innerText   || el.textContent || '').trim();
+    const label = (el.getAttribute('aria-label')    || '').trim().toLowerCase();
+    return (
+      txt   === 'More'                                    ||
+      label === 'more'                                    ||
+      label === 'more actions'                            ||
+      label.startsWith('more actions for')
+    );
+  });
+
+  if (!moreButton) {
+    return { success: false, reason: '"More" button not found on this profile. The profile layout may be different (e.g. your own profile, or a restricted account).' };
+  }
+
+  moreButton.click();
+  await sleep(dropdownSettleMs); // wait for dropdown animation
+
+  // ── Locate "Save to PDF" in the open dropdown ─
+  // Try progressively broader selectors.
+  const dropdownSelectors = [
+    '.artdeco-dropdown__content-inner li',       // standard artdeco dropdown items
+    '.artdeco-dropdown__item',
+    '.pvs-overflow-actions-dropdown__content li',// profile overflow menu
+    '[role="menu"]   [role="menuitem"]',
+    '[role="listbox"] [role="option"]',
+    'ul[role="menu"] li',
+  ];
+
+  let savePdfEl = null;
+
+  for (const sel of dropdownSelectors) {
+    const items = Array.from(document.querySelectorAll(sel));
+    savePdfEl = items.find((el) =>
+      (el.innerText || el.textContent || '').trim().includes('Save to PDF')
+    );
+    if (savePdfEl) break;
+  }
+
+  // Last-resort: any visible element with "Save to PDF" text
+  if (!savePdfEl) {
+    const allEls = Array.from(document.querySelectorAll('span, li, div, button, a'));
+    savePdfEl = allEls.find((el) => {
+      if (el.children.length > 2) return false;  // skip parent containers
+      if (!el.offsetParent)       return false;  // skip hidden
+      const txt = (el.innerText || '').trim();
+      return txt === 'Save to PDF';
+    });
+  }
+
+  if (!savePdfEl) {
+    return { success: false, reason: '"Save to PDF" not found in the More dropdown. LinkedIn may have changed their menu structure.' };
+  }
+
+  savePdfEl.click();
+  return { success: true };
+}
+
+// ── Injected: Login check + name scrape ─────────
+function scrapePageInfo() {
+  const href = window.location.href;
+
+  const onAuthPage =
+    href.includes('/login')      ||
+    href.includes('/checkpoint') ||
+    href.includes('/authwall')   ||
+    href.includes('/signup')     ||
+    href.includes('/uas/login');
+
+  if (onAuthPage) return { isLoggedIn: false, name: '' };
+
+  const signals = [
+    () => !!document.querySelector('#global-nav'),
+    () => !!document.querySelector('.global-nav'),
+    () => !!document.querySelector('nav[aria-label="Global Navigation"]'),
+    () => !!document.querySelector('.global-nav__me'),
+    () => !!document.querySelector('.scaffold-layout'),
+    () => !!document.querySelector('.application-outlet'),
+    () => !!document.querySelector('[data-member-id]'),
+    () => !!document.querySelector('.pvs-profile-actions'),
+    () => document.cookie.split(';').some((c) => c.trim().startsWith('li_at=')),
+    () => document.cookie.split(';').some((c) => c.trim().startsWith('JSESSIONID=')),
+  ];
+
+  let signalCount = 0;
+  for (const check of signals) { try { if (check()) signalCount++; } catch {} }
+
+  const isProfilePage  = href.includes('/in/') || href.includes('/pub/');
+  const hasBodyContent = document.body && document.body.innerText.length > 500;
+  const isLoggedIn     = signalCount >= 1 || (isProfilePage && hasBodyContent);
+
+  const nameSelectors = [
+    'h1.text-heading-xlarge',
+    '.pv-text-details__left-panel h1',
+    '.artdeco-entity-lockup__title h1',
+    '.ph5 h1',
+    'section.artdeco-card h1',
+    'main h1',
+    'h1',
+  ];
+
+  let name = '';
+  for (const sel of nameSelectors) {
+    const el = document.querySelector(sel);
+    if (el && el.innerText.trim().length > 1) { name = el.innerText.trim(); break; }
+  }
+
+  return { isLoggedIn, name };
+}
+
 // ── Tab Load Helper ─────────────────────────────
 function waitForTabLoad(tabId) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => { chrome.tabs.onUpdated.removeListener(listener); reject(new Error('Tab load timed out')); },
-      TAB_LOAD_TIMEOUT_MS
-    );
+    const timer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      reject(new Error('Tab load timed out'));
+    }, TAB_LOAD_TIMEOUT_MS);
 
     function listener(id, info) {
       if (id === tabId && info.status === 'complete') {
@@ -171,174 +342,56 @@ function waitForTabLoad(tabId) {
         resolve();
       }
     }
-
     chrome.tabs.onUpdated.addListener(listener);
   });
 }
 
-// ── Page Info Scraper (runs inside the tab) ─────
-// This function is serialised and injected — no closure variables allowed.
-function scrapePageInfo() {
-  const href = window.location.href;
-
-  // ── Hard auth-wall check ─────────────────────
-  // If LinkedIn redirected us to a login/auth page, we're definitely logged out.
-  const onAuthPage = href.includes('/login') ||
-                     href.includes('/checkpoint') ||
-                     href.includes('/authwall') ||
-                     href.includes('/signup') ||
-                     href.includes('/uas/login');
-
-  if (onAuthPage) {
-    return { isLoggedIn: false, name: '', reason: 'auth_redirect' };
-  }
-
-  // ── Multi-signal login detection ─────────────
-  // LinkedIn changes class names frequently. We cast a wide net across
-  // every known signal rather than relying on a single selector.
-
-  const signals = [
-    // Global nav container (present since 2019, still present 2025)
-    () => !!document.querySelector('#global-nav'),
-    () => !!document.querySelector('.global-nav'),
-    // Top nav authenticated elements
-    () => !!document.querySelector('nav[aria-label="Global Navigation"]'),
-    // "Me" dropdown — class name varies across LinkedIn versions
-    () => !!document.querySelector('.global-nav__me'),
-    () => !!document.querySelector('[data-control-name="identity_welcome_message"]'),
-    () => !!document.querySelector('[data-control-name="nav.settings"]'),
-    // Profile photo thumbnail in nav (only rendered when logged in)
-    () => !!document.querySelector('.global-nav__me-photo'),
-    () => !!document.querySelector('.nav-settings__profile-photo'),
-    // Scaffold layout only exists on authenticated pages
-    () => !!document.querySelector('.scaffold-layout'),
-    () => !!document.querySelector('.application-outlet'),
-    // "Start a post" button on feed / profile
-    () => !!document.querySelector('[data-control-name="share.sharebox_focus_trigger"]'),
-    // Authenticated cookie: li_at is LinkedIn's session token
-    () => document.cookie.split(';').some(c => c.trim().startsWith('li_at=')),
-    // JSESSIONID is also set on authenticated sessions
-    () => document.cookie.split(';').some(c => c.trim().startsWith('JSESSIONID=')),
-    // The main feed or profile content wrapper
-    () => !!document.querySelector('.feed-container-theme'),
-    () => !!document.querySelector('.profile-detail'),
-    // Any element with LinkedIn's authenticated data attribute
-    () => !!document.querySelector('[data-member-id]'),
-    // "Add to profile" / connection buttons only appear when logged in
-    () => !!document.querySelector('.pvs-profile-actions'),
-    () => !!document.querySelector('.pv-top-card--list'),
-  ];
-
-  // Require at least 1 positive signal — if LinkedIn is loaded (not an auth page)
-  // and any logged-in indicator is present, treat as logged in.
-  let signalCount = 0;
-  for (const check of signals) {
-    try { if (check()) signalCount++; } catch {}
-  }
-
-  // Also accept if we're on a /in/ profile URL with page content
-  // (LinkedIn sometimes loads profile even before full nav renders)
-  const isProfilePage = href.includes('/in/') || href.includes('/pub/');
-  const hasBodyContent = document.body && document.body.innerText.length > 500;
-  const urlSignal = isProfilePage && hasBodyContent;
-
-  const isLoggedIn = signalCount >= 1 || urlSignal;
-
-  // ── Name extraction ──────────────────────────
-  const nameSelectors = [
-    'h1.text-heading-xlarge',                      // current LinkedIn (2024–25)
-    '.pv-text-details__left-panel h1',             // older layout
-    '.artdeco-entity-lockup__title h1',
-    '.ph5 h1',                                     // profile header container
-    'section.artdeco-card h1',
-    '.profile-info-subheader h1',
-    'main h1',                                     // broad fallback
-    'h1',                                          // last resort
-  ];
-
-  let name = '';
-  for (const sel of nameSelectors) {
-    const el = document.querySelector(sel);
-    if (el && el.innerText.trim().length > 1) {
-      name = el.innerText.trim();
-      break;
-    }
-  }
-
-  return { isLoggedIn, name, signalCount, urlSignal };
-}
-
-// ── CDP PDF Generation ──────────────────────────
-function printToPDF(tabId) {
+// ── Download Complete Helper ────────────────────
+function waitForDownloadComplete(downloadId) {
   return new Promise((resolve, reject) => {
-    chrome.debugger.attach({ tabId }, '1.3', () => {
-      if (chrome.runtime.lastError) {
-        return reject(new Error(`Debugger attach failed: ${chrome.runtime.lastError.message}`));
+    const timer = setTimeout(() => {
+      chrome.downloads.onChanged.removeListener(listener);
+      reject(new Error('Download timed out after 60 s'));
+    }, DOWNLOAD_FINISH_MS);
+
+    function listener(delta) {
+      if (delta.id !== downloadId) return;
+      if (delta.state?.current === 'complete') {
+        clearTimeout(timer);
+        chrome.downloads.onChanged.removeListener(listener);
+        resolve();
       }
-
-      chrome.debugger.sendCommand(
-        { tabId },
-        'Page.printToPDF',
-        {
-          printBackground:      true,
-          preferCSSPageSize:    false,
-          paperWidth:           8.27,   // A4 in inches
-          paperHeight:          11.69,
-          marginTop:            0.39,
-          marginBottom:         0.39,
-          marginLeft:           0.39,
-          marginRight:          0.39,
-          scale:                0.9
-        },
-        (result) => {
-          // Always detach, even on error
-          chrome.debugger.detach({ tabId }, () => {});
-
-          if (chrome.runtime.lastError) {
-            return reject(new Error(`printToPDF failed: ${chrome.runtime.lastError.message}`));
-          }
-          if (!result || !result.data) {
-            return reject(new Error('printToPDF returned empty data'));
-          }
-          resolve(result.data); // base64-encoded PDF
-        }
-      );
-    });
+      if (delta.state?.current === 'interrupted') {
+        clearTimeout(timer);
+        chrome.downloads.onChanged.removeListener(listener);
+        reject(new Error('Download was interrupted: ' + (delta.error?.current || 'unknown')));
+      }
+    }
+    chrome.downloads.onChanged.addListener(listener);
   });
 }
 
-// ── Download PDF from base64 ────────────────────
-function downloadBase64PDF(base64Data, filename) {
+// ── Generic Poll-Until-True ─────────────────────
+function waitForCondition(conditionFn, timeout, timeoutMsg) {
   return new Promise((resolve, reject) => {
-    // chrome.downloads supports data: URLs directly
-    const dataUrl = `data:application/pdf;base64,${base64Data}`;
-
-    chrome.downloads.download(
-      { url: dataUrl, filename, saveAs: false, conflictAction: 'uniquify' },
-      (downloadId) => {
-        if (chrome.runtime.lastError) {
-          return reject(new Error(`Download failed: ${chrome.runtime.lastError.message}`));
-        }
-        resolve(downloadId);
-      }
-    );
+    const interval = setInterval(() => {
+      if (conditionFn()) { clearInterval(interval); clearTimeout(timer); resolve(); }
+    }, 300);
+    const timer = setTimeout(() => {
+      clearInterval(interval);
+      reject(new Error(timeoutMsg || 'Condition timed out'));
+    }, timeout);
   });
 }
 
 // ── Utilities ───────────────────────────────────
 function sanitizeFilename(name) {
   return name
-    .replace(/[\\/:*?"<>|]/g, '')   // strip illegal chars
-    .replace(/\s+/g, '_')            // spaces → underscores
-    .substring(0, 100);              // max length guard
+    .replace(/[\\/:*?"<>|]/g, '')
+    .replace(/\s+/g, '_')
+    .substring(0, 100);
 }
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-function broadcast(message) {
-  chrome.runtime.sendMessage(message).catch(() => {
-    // Popup may be closed — that's fine, ignore the error
-  });
-}
+function broadcast(msg) { chrome.runtime.sendMessage(msg).catch(() => {}); }
