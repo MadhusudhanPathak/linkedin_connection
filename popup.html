@@ -40,7 +40,6 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
         <span id="file-name-label">—</span>
         <span class="pill" id="url-count-pill">0 URLs</span>
-        <span class="pill pill-chunk" id="chunk-pill">0 chunks</span>
       </div>
     </section>
 
@@ -50,10 +49,28 @@
       <span id="alert-text"></span>
     </div>
 
+    <!-- ── Wait Time Slider ── -->
+    <section class="section slider-section" id="slider-section">
+      <div class="slider-label">
+        <span>Wait Time Between Profiles</span>
+        <span class="slider-value" id="slider-value">5s</span>
+      </div>
+      <input type="range" id="wait-time-slider" class="slider" min="3" max="15" value="5" />
+      <div class="slider-hint">Recommended: 5 seconds • Sets delay after each PDF download</div>
+    </section>
+
+    <!-- ── Estimated Time ── -->
+    <section class="section estimate-section hidden" id="estimate-section">
+      <div class="estimate-card">
+        <div class="estimate-title">⏱️ Estimated Time</div>
+        <div class="estimate-value" id="estimate-value">0s</div>
+        <div class="estimate-hint">Do not use the browser during this time</div>
+      </div>
+    </section>
+
     <!-- ── Progress ── -->
     <section class="section progress-section hidden" id="progress-section">
       <div class="progress-meta">
-        <span class="chunk-badge" id="chunk-badge">Chunk 1 / 1</span>
         <span class="progress-frac" id="progress-frac">0 / 0</span>
       </div>
       <div class="progress-track">

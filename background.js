@@ -1,16 +1,9 @@
 // ─────────────────────────────────────────────
 //  LinkedIn PDF Downloader — Background Worker
-//  Strategy: click More → Save to PDF on each profile,
-//  intercept the download to rename it.
+//  Ultra-simple strategy: click More → Save to PDF, then move to next.
 // ─────────────────────────────────────────────
 
-const CHUNK_SIZE          = 50;
-const DELAY_MS            = 3000;
-const TAB_LOAD_TIMEOUT_MS = 30000;
-const PAGE_SETTLE_MS      = 3500;   // time after load for LinkedIn JS to render
-const DROPDOWN_SETTLE_MS  = 1500;   // time for More dropdown animation to open (increased)
-const DOWNLOAD_START_MS   = 45000;  // max wait for download to begin after clicking (increased from 30s)
-const DOWNLOAD_FINISH_MS  = 60000;  // max wait for download to complete
+const TAB_LOAD_TIMEOUT_MS = 30000;  // max wait for tab to load
 
 // ── State ──────────────────────────────────────
 let state = {
@@ -19,8 +12,22 @@ let state = {
   urls:         [],
   currentIndex: 0,
   results:      [],
-  startTime:    null
+  startTime:    null,
+  waitTime:     3000  // wait time in milliseconds (default 3s)
 };
+
+// ── Download Folder Redirect ───────────────────
+// Redirect all PDFs to LinkedIn_Connections subfolder
+chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
+  const filename = (downloadItem.filename || '').toLowerCase();
+  if (filename.endsWith('.pdf') || downloadItem.mime === 'application/pdf') {
+    const baseName = downloadItem.filename.split(/[\\/]/).pop();
+    suggest({
+      filename: 'LinkedIn_Connections/' + baseName,
+      conflictAction: 'uniquify'
+    });
+  }
+});
 
 // ── Keep service worker alive during a run ──────
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -41,7 +48,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         urls:         msg.urls,
         currentIndex: 0,
         results:      [],
-        startTime:    Date.now()
+        startTime:    Date.now(),
+        waitTime:     (msg.waitTime || 3) * 1000  // convert seconds to milliseconds
       };
       chrome.alarms.create('keepAlive', { when: Date.now() + 20000 });
       runNext();
@@ -94,11 +102,6 @@ async function runNext() {
     return;
   }
 
-  // Chunk boundary notification
-  if (currentIndex > 0 && currentIndex % CHUNK_SIZE === 0) {
-    broadcast({ type: 'CHUNK_DONE', chunk: currentIndex / CHUNK_SIZE, currentIndex, total: urls.length });
-  }
-
   const url = urls[currentIndex].trim();
   broadcast({ type: 'PROCESSING', url, currentIndex, total: urls.length });
 
@@ -126,22 +129,22 @@ async function runNext() {
   // If user paused between profiles, hold here — resume() will restart
   if (state.isPaused) return;
 
-  setTimeout(runNext, DELAY_MS);
+  // Move to next profile immediately (wait already happened after Save to PDF click)
+  runNext();
 }
 
 // ── Profile Processor ───────────────────────────
 async function processProfile(url) {
-  let tabId           = null;
-  let createdListener = null;
+  let tabId = null;
 
   try {
     // 1. Open profile in a background tab
     const tab = await chrome.tabs.create({ url, active: false });
     tabId = tab.id;
 
-    // 2. Wait for full page load + LinkedIn JS render time
+    // 2. Wait for page to fully load
     await waitForTabLoad(tabId);
-    await sleep(PAGE_SETTLE_MS);
+    await sleep(1000); // Brief pause for page to settle
 
     // 3. Verify login
     const [{ result: pageInfo }] = await chrome.scripting.executeScript({
@@ -150,63 +153,22 @@ async function processProfile(url) {
     });
     if (!pageInfo.isLoggedIn) throw new Error('NOT_LOGGED_IN');
 
-    // 4. Arm onCreated listener BEFORE clicking so we catch the download ID
-    //    the moment LinkedIn triggers it. No renaming — just track the ID.
-    let capturedDownloadId = null;
-    createdListener = (item) => {
-      // If already captured, ignore subsequent downloads
-      if (capturedDownloadId !== null) return;
-      
-      // Check for PDF using multiple methods to handle LinkedIn's various response formats
-      const filename = (item.filename || '').toLowerCase();
-      const mime = (item.mime || '').toLowerCase();
-      
-      // PDF detection: check MIME type, filename extension, or common patterns
-      const isPdf =
-        mime === 'application/pdf' ||
-        mime.includes('pdf') ||
-        filename.endsWith('.pdf') ||
-        (filename.includes('profile') && filename.length > 0) ||
-        filename.includes('linkedin');
-      
-      if (isPdf) {
-        capturedDownloadId = item.id;
-        chrome.downloads.onCreated.removeListener(createdListener);
-        createdListener = null;
-      }
-    };
-    chrome.downloads.onCreated.addListener(createdListener);
-
-    // 5. Click More → Save to PDF
+    // 4. Click More → Save to PDF
     const [{ result: clickResult }] = await chrome.scripting.executeScript({
       target: { tabId },
-      func:   clickMoreThenSaveToPDF,
-      args:   [DROPDOWN_SETTLE_MS]
+      func:   clickMoreThenSaveToPDF
     });
     if (!clickResult.success) throw new Error(clickResult.reason || 'Could not click Save to PDF');
 
-    // 5b. Extra wait after the click to allow LinkedIn server to generate PDF
-    await sleep(500);
+    // Wait for user-specified time to allow download to start and process
+    await sleep(state.waitTime);
 
-    // 6. Wait for the download to begin (LinkedIn generates PDF server-side)
-    await waitForCondition(
-      () => capturedDownloadId !== null,
-      DOWNLOAD_START_MS,
-      'LinkedIn did not start a PDF download within 30s.'
-    );
-
-    // 7. Wait for download to finish writing to disk — THEN close the tab.
-    //    This is what prevents the "move to next before download finished" bug.
-    await waitForDownloadComplete(capturedDownloadId);
-
+    // That's it! Browser will handle the download in the background.
+    // Move to next profile immediately.
     return { url, success: true, name: pageInfo.name };
 
   } finally {
-    // Always clean up listeners
-    if (createdListener) {
-      try { chrome.downloads.onCreated.removeListener(createdListener); } catch {}
-    }
-    // Tab is closed here — guaranteed to run after download completes (or on error)
+    // Close tab immediately
     if (tabId !== null) {
       try { await chrome.tabs.remove(tabId); } catch {}
     }
@@ -216,7 +178,7 @@ async function processProfile(url) {
 // ── Injected: Click More → Save to PDF ─────────
 // IMPORTANT: This function is serialised & injected into the LinkedIn tab.
 //            It must be 100% self-contained — no closures, no external refs.
-async function clickMoreThenSaveToPDF(dropdownSettleMs) {
+async function clickMoreThenSaveToPDF() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ── Locate the "More" button ────────────────
@@ -239,7 +201,7 @@ async function clickMoreThenSaveToPDF(dropdownSettleMs) {
   }
 
   moreButton.click();
-  await sleep(dropdownSettleMs); // wait for dropdown animation
+  await sleep(300); // minimal wait for dropdown to render
 
   // ── Locate "Save to PDF" in the open dropdown ─
   // Try progressively broader selectors.
@@ -278,7 +240,6 @@ async function clickMoreThenSaveToPDF(dropdownSettleMs) {
   }
 
   savePdfEl.click();
-  await sleep(500); // Brief wait after clicking to ensure download triggers
   return { success: true };
 }
 
@@ -350,44 +311,6 @@ function waitForTabLoad(tabId) {
       }
     }
     chrome.tabs.onUpdated.addListener(listener);
-  });
-}
-
-// ── Download Complete Helper ────────────────────
-function waitForDownloadComplete(downloadId) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      chrome.downloads.onChanged.removeListener(listener);
-      reject(new Error('Download timed out after 60 s'));
-    }, DOWNLOAD_FINISH_MS);
-
-    function listener(delta) {
-      if (delta.id !== downloadId) return;
-      if (delta.state?.current === 'complete') {
-        clearTimeout(timer);
-        chrome.downloads.onChanged.removeListener(listener);
-        resolve();
-      }
-      if (delta.state?.current === 'interrupted') {
-        clearTimeout(timer);
-        chrome.downloads.onChanged.removeListener(listener);
-        reject(new Error('Download was interrupted: ' + (delta.error?.current || 'unknown')));
-      }
-    }
-    chrome.downloads.onChanged.addListener(listener);
-  });
-}
-
-// ── Generic Poll-Until-True ─────────────────────
-function waitForCondition(conditionFn, timeout, timeoutMsg) {
-  return new Promise((resolve, reject) => {
-    const interval = setInterval(() => {
-      if (conditionFn()) { clearInterval(interval); clearTimeout(timer); resolve(); }
-    }, 300);
-    const timer = setTimeout(() => {
-      clearInterval(interval);
-      reject(new Error(timeoutMsg || 'Condition timed out'));
-    }, timeout);
   });
 }
 

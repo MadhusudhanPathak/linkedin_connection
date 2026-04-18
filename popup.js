@@ -2,8 +2,6 @@
 //  LinkedIn PDF Downloader — Popup Script
 // ──────────────────────────────────────────────
 
-const CHUNK_SIZE = 50;
-
 // ── DOM refs ──────────────────────────────────
 const $ = (id) => document.getElementById(id);
 
@@ -12,11 +10,9 @@ const dropzone      = $('dropzone');
 const fileMeta      = $('file-meta');
 const fileNameLabel = $('file-name-label');
 const urlCountPill  = $('url-count-pill');
-const chunkPill     = $('chunk-pill');
 const alertBanner   = $('alert-banner');
 const alertText     = $('alert-text');
 const progressSect  = $('progress-section');
-const chunkBadge    = $('chunk-badge');
 const progressFrac  = $('progress-frac');
 const progressBar   = $('progress-bar');
 const currentUrl    = $('current-url');
@@ -32,10 +28,15 @@ const logSection    = $('log-section');
 const logList       = $('log-list');
 const clearLogBtn   = $('clear-log-btn');
 const statusDot     = $('status-dot');
+const waitTimeSlider = $('wait-time-slider');
+const sliderValue   = $('slider-value');
+const estimateSection = $('estimate-section');
+const estimateValue = $('estimate-value');
 
 // ── State ──────────────────────────────────────
 let parsedUrls = [];
 let stats = { done: 0, fail: 0 };
+let selectedWaitTime = 5; // default 5 seconds (recommended)
 
 // ── Drag & Drop ────────────────────────────────
 dropzone.addEventListener('dragover', (e) => {
@@ -75,11 +76,13 @@ function handleFile(file) {
     // Update file meta UI
     fileNameLabel.textContent = file.name;
     urlCountPill.textContent  = `${urls.length} URL${urls.length !== 1 ? 's' : ''}`;
-    const chunks = Math.ceil(urls.length / CHUNK_SIZE);
-    chunkPill.textContent = `${chunks} chunk${chunks !== 1 ? 's' : ''}`;
     fileMeta.classList.remove('hidden');
 
     startBtn.disabled = false;
+    
+    // Show estimated time
+    updateEstimatedTime();
+    estimateSection.classList.remove('hidden');
   };
   reader.readAsText(file);
 }
@@ -115,6 +118,32 @@ function parseCSV(text) {
   return urls;
 }
 
+// ── Wait Time Slider ───────────────────────────
+waitTimeSlider.addEventListener('input', (e) => {
+  selectedWaitTime = parseInt(e.target.value, 10);
+  sliderValue.textContent = `${selectedWaitTime}s`;
+  updateEstimatedTime();
+});
+
+// ── Estimated Time Calculator ──────────────────
+function updateEstimatedTime() {
+  if (parsedUrls.length === 0) return;
+  
+  // Formula: (waitTime * numUrls) + 10 seconds
+  const estimatedSeconds = (selectedWaitTime * parsedUrls.length) + 10;
+  const minutes = Math.floor(estimatedSeconds / 60);
+  const seconds = estimatedSeconds % 60;
+  
+  let timeStr;
+  if (minutes > 0) {
+    timeStr = `${minutes}m ${seconds}s`;
+  } else {
+    timeStr = `${estimatedSeconds}s`;
+  }
+  
+  estimateValue.textContent = timeStr;
+}
+
 // ── Controls ───────────────────────────────────
 startBtn.addEventListener('click', () => {
   if (parsedUrls.length === 0) return;
@@ -123,7 +152,13 @@ startBtn.addEventListener('click', () => {
   resetUI();
   setRunningState('running');
 
-  chrome.runtime.sendMessage({ type: 'START', urls: parsedUrls }, (resp) => {
+  // Open progress monitor in a new tab (pinned window alternative)
+  chrome.tabs.create({
+    url: chrome.runtime.getURL('progress.html'),
+    active: true
+  });
+
+  chrome.runtime.sendMessage({ type: 'START', urls: parsedUrls, waitTime: selectedWaitTime }, (resp) => {
     if (!resp || !resp.ok) {
       showAlert(resp?.reason || 'Failed to start. Try again.', 'error');
       setRunningState('idle');
@@ -161,19 +196,12 @@ chrome.runtime.onMessage.addListener((msg) => {
   switch (msg.type) {
 
     case 'PROCESSING': {
-      const chunk  = Math.floor(msg.currentIndex / CHUNK_SIZE) + 1;
-      const chunks = Math.ceil(msg.total / CHUNK_SIZE);
-      chunkBadge.textContent   = `Chunk ${chunk} / ${chunks}`;
       progressFrac.textContent = `${msg.currentIndex + 1} / ${msg.total}`;
       progressBar.style.width  = `${((msg.currentIndex + 1) / msg.total) * 100}%`;
       currentUrl.textContent   = msg.url;
       statRemain.textContent   = msg.total - msg.currentIndex - 1;
       break;
     }
-
-    case 'CHUNK_DONE':
-      addLog('chunk', `Chunk ${msg.chunk} complete — ${msg.currentIndex} profiles processed`, '');
-      break;
 
     case 'RESULT': {
       const { result } = msg;
@@ -230,8 +258,6 @@ function resetUI() {
   progressBar.style.width  = '0%';
   progressFrac.textContent = `0 / ${parsedUrls.length}`;
   currentUrl.textContent = '—';
-  const chunks = Math.ceil(parsedUrls.length / CHUNK_SIZE);
-  chunkBadge.textContent = `Chunk 1 / ${chunks}`;
   hideAlert();
 }
 
@@ -241,8 +267,10 @@ function setRunningState(runState) {
   const paused  = runState === 'paused';
   const idle    = runState === 'idle';
 
-  // Hide the CSV upload area once a run starts
+  // Hide the CSV upload area and slider once a run starts
   $('upload-section').classList.toggle('hidden', !idle);
+  $('slider-section').classList.toggle('hidden', !idle);
+  $('estimate-section').classList.toggle('hidden', !idle);
 
   startBtn.classList.toggle('hidden',  !idle);
   pauseBtn.classList.toggle('hidden',  !running);

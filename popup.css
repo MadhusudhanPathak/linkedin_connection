@@ -158,6 +158,113 @@ body {
 .alert svg { flex-shrink: 0; margin-top: 1px; }
 .alert.warn { background: var(--amber-lt); color: var(--amber); border-color: #f8d5b6; }
 
+/* ─── Slider ───────────────────────────────────── */
+.slider-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.slider-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--li-blue);
+  min-width: 35px;
+  text-align: right;
+}
+
+.slider {
+  width: 100%;
+  height: 5px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border);
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--li-blue);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(10, 102, 194, 0.3);
+  transition: all .2s;
+}
+
+.slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(10, 102, 194, 0.5);
+}
+
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--li-blue);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 6px rgba(10, 102, 194, 0.3);
+  transition: all .2s;
+}
+
+.slider::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(10, 102, 194, 0.5);
+}
+
+.slider-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ─── Estimate Section ──────────────────────────── */
+.estimate-section {
+  background: linear-gradient(135deg, #dae8f7 0%, #e6f1ff 100%);
+  border-bottom: 1px solid #b3d9f2;
+}
+
+.estimate-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: white;
+  border-radius: var(--radius-sm);
+  border-left: 4px solid var(--li-blue);
+}
+
+.estimate-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.estimate-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--li-blue);
+}
+
+.estimate-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* ─── Progress ─────────────────────────────────── */
 .progress-section {
   display: flex;
@@ -188,7 +295,7 @@ body {
 }
 
 .progress-track {
-  height: 6px;
+  height: 14px;
   background: var(--border);
   border-radius: 999px;
   overflow: hidden;
@@ -199,7 +306,7 @@ body {
   width: 0%;
   background: linear-gradient(90deg, var(--li-blue), var(--teal));
   border-radius: 999px;
-  transition: width .4s ease;
+  transition: width .3s ease;
 }
 
 .current-url {
