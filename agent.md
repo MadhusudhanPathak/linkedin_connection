@@ -1,12 +1,16 @@
-# AGENT.md — LinkedIn Connection PDF Downloader (Browser Extension)
+# AGENT.md — LinkedIn Profile PDF Downloader (Manifest V3 Extension)
+
+**Technical Reference & Implementation Guide**
+
+---
 
 ## Project Overview
 
-A **Manifest V3 browser extension** for Chromium-based browsers (Edge, Chrome, Brave) that batch-downloads LinkedIn connection profiles as PDFs. It automates the "More → Save to PDF" process with a streamlined, fast workflow.
+A Manifest V3 browser extension for Chrome, Edge, and Brave that batch-downloads LinkedIn connection profiles as PDFs by automating the "More → Save to PDF" workflow.
 
-No complex monitoring, no waiting for downloads to complete - just click and move forward. Includes a persistent progress monitor window.
+**Key Philosophy:** Simplicity, transparency, and user control. No external APIs, no servers, 100% local processing.
 
-**GitHub Repository:** https://github.com/MadhusudhanPathak/linkedin_connection
+**GitHub:** https://github.com/MadhusudhanPathak/linkedin_connection
 
 ---
 
@@ -14,20 +18,35 @@ No complex monitoring, no waiting for downloads to complete - just click and mov
 
 ```
 linkedin_connection/
-├── manifest.json      # MV3 extension config
-├── background.js      # Service worker — main automation logic
-├── popup.html         # Extension popup UI
-├── popup.css          # Popup styles
-├── popup.js           # Popup logic, CSV parsing, UI controls
-├── progress.html      # Persistent progress monitor window
-├── progress.js        # Progress monitor logic and real-time updates
-├── README.md          # User documentation
-├── agent.md           # This technical reference
-└── icons/
-    ├── icon16.png
-    ├── icon32.png
-    ├── icon48.png
-    └── icon128.png
+├── src/
+│   ├── core/
+│   │   ├── background-worker.js      # Service Worker (main automation)
+│   │   ├── injected-page-info.js     # Content script for page inspection
+│   │   └── injected-save-pdf.js      # Content script for PDF automation
+│   ├── ui/
+│   │   ├── popup-script.js           # Popup UI (CSV upload, controls)
+│   │   └── progress-script.js        # Progress monitor window
+│   └── utils/
+│       ├── constants.js              # Global constants & config
+│       ├── csv-parser.js             # CSV parsing & validation
+│       ├── helpers.js                # Common utilities
+│       └── message-handler.js        # Chrome messaging wrappers
+├── styles/
+│   ├── shared.css                    # Base styles & variables
+│   ├── popup.css                     # Popup styles
+│   └── progress.css                  # Monitor styles
+├── docs/
+│   └── ARCHITECTURE.md               # Detailed architecture
+├── icons/
+│   ├── icon16.png
+│   ├── icon32.png
+│   ├── icon48.png
+│   └── icon128.png
+├── popup.html                        # Popup UI markup
+├── progress.html                     # Progress monitor markup
+├── manifest.json                     # MV3 configuration
+├── README.md                         # User documentation
+└── AGENT.md                          # This file
 ```
 
 ---

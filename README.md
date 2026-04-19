@@ -1,23 +1,48 @@
-# LinkedIn Connection PDF Downloader
+# LinkedIn Profile PDF Downloader
 
-A browser extension for **Microsoft Edge, Chrome, and Brave** that batch-downloads your LinkedIn connections' profiles as PDFs by automating the "More → Save to PDF" process.
+A powerful, privacy-first chromium based plugin or browser extension for **Chrome, Edge, and Brave** that automates batch-downloading your LinkedIn connections' full profiles as PDFs.
 
-No external scripts, no servers, no complex monitoring. Runs entirely inside your browser with a simple, fast workflow.
+**No external services. No tracking. No scraping. Just using the methods LinkedIn already provides. Your data stays with you.**
 
-**GitHub Repository:** https://github.com/MadhusudhanPathak/linkedin_connection
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Status](https://img.shields.io/badge/status-stable-brightgreen)
 
 ---
 
-## How It Works
+## Table of Contents
 
-1. Upload a CSV file containing LinkedIn profile URLs
-2. Configure your preferred wait time between profiles (3-15 seconds)
-3. Start the download process
-4. The extension opens each profile in a new tab, clicks "More → Save to PDF", waits your specified time, then moves to the next profile
-5. PDFs are automatically organized in a `LinkedIn_Connections` folder
-6. Monitor progress in a dedicated progress window that stays visible
+1. [Features](#features)
+2. [Quick Start](#quick-start)
+3. [Installation](#installation)
+4. [Usage Guide](#usage-guide)
+5. [FAQ](#faq)
+6. [Architecture](#architecture)
+7. [License](#license)
 
-The process is streamlined for speed and reliability - no waiting for downloads to complete, just click and move forward.
+---
+
+## Features
+
+### 🚀 Fast & Simple
+- One-click batch download automation
+- Configurable timing (3-15 seconds)
+- Real-time progress monitoring
+
+### 🔒 Privacy First
+- 100% local processing
+- No tracking or external servers
+- Open source code
+
+---
+
+## Quick Start
+
+1. Enable Developer Mode in your browser extensions page
+2. Load the extension folder
+3. Log in to LinkedIn
+4. Upload your CSV file of profile URLs
+5. Click Start and monitor progress
 
 ---
 
@@ -25,19 +50,19 @@ The process is streamlined for speed and reliability - no waiting for downloads 
 
 ### Step 1: Enable Developer Mode
 
-| Browser | URL to open |
-|---|---|
-| Edge | `edge://extensions` |
-| Chrome | `chrome://extensions` |
-| Brave | `brave://extensions` |
+**Chrome:** Open `chrome://extensions` → Toggle "Developer mode" (top-right)
 
-Toggle **Developer mode** on (top-right corner of the page).
+**Edge:** Open `edge://extensions` → Toggle "Developer mode" (top-right)
+
+**Brave:** Open `brave://extensions` → Toggle "Developer mode" (top-right)
 
 ### Step 2: Load the Extension
 
 1. Click **Load unpacked**
 2. Select the `linkedin_connection` folder
-3. The extension icon will appear in your browser toolbar
+3. Click Open
+
+The extension icon will appear in your toolbar.
 
 ---
 
@@ -50,6 +75,7 @@ Make sure you're fully logged in to LinkedIn before starting. The extension will
 ### 2. Prepare your CSV
 
 Create a CSV file with LinkedIn profile URLs. The extension automatically detects URLs containing `linkedin.com/in/` or `linkedin.com/pub/`.
+The most suitable way is to visit `https://www.linkedin.com/mypreferences/d/download-my-data` portal and then get your full data from LinkedIn. It will take around 24 hours, and after extracting your full data you will find a lot of csv and important files. From there you can also use the `Connections.csv` file directly.
 
 **Accepted formats:**
 ```
@@ -64,8 +90,6 @@ Name, Profile URL, Company
 Jane Doe, https://www.linkedin.com/in/janedoe, Acme Corp
 John Smith, https://www.linkedin.com/in/john-smith, Globex
 ```
-
-You can export your connections from LinkedIn at: https://www.linkedin.com/mypreferences/d/download-my-data
 
 ### 3. Configure and Start
 
@@ -106,7 +130,9 @@ Adjust the delay between profiles using the slider above the Start button:
 - **Default**: 5 seconds
 - **Purpose**: Allows LinkedIn's PDF generation to complete before moving to the next profile
 
-The estimated completion time updates automatically based on your selection.
+On my initial time I figured out that it takes different time in different browsers, Brave can do it in 4 seconds while Microsoft Edge takes 6 seconds. Also, the wait time also depends on the internet speed, jitters and pings. So, if all combined, the wait time can easily go till 10 seconds. Hence, I have given this slider to let user tune their system as per there setup.
+
+The estimated completion time updates automatically based on your selection. It's basically the number of connections times the wait time and an additional 10 seconds for buffer. It's recommended to not use the whole browser while the process takes place because there's tab based automation and the plugin may get confused with your activity with its activity.
 
 ---
 

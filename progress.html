@@ -3,277 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LinkedIn PDF Downloader - Progress</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --li-blue:    #0A66C2;
-      --li-blue-dk: #004182;
-      --teal:       #00B8A9;
-      --red:        #CC1016;
-      --green:      #057642;
-      --text:       #1C1C1C;
-      --text-muted: #6B7280;
-      --border:     #E2E8F0;
-      --bg:         #F8FAFC;
-      --surface:    #FFFFFF;
-      --radius:     10px;
-      --radius-sm:  6px;
-      --shadow:     0 1px 4px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.05);
-    }
-
-    body {
-      font-family: -apple-system, 'Segoe UI', sans-serif;
-      font-size: 14px;
-      color: var(--text);
-      background: var(--bg);
-      width: 550px;
-      min-height: 400px;
-      line-height: 1.5;
-      padding: 0;
-      margin: 0;
-    }
-
-    .shell {
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      height: 100%;
-    }
-
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 16px 20px;
-      background: var(--surface);
-      border-bottom: 2px solid var(--li-blue);
-      flex-shrink: 0;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-
-    .header-logo {
-      display: flex;
-      align-items: center;
-      flex-shrink: 0;
-    }
-
-    .header-text {
-      flex: 1;
-    }
-
-    .header-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: -.2px;
-    }
-
-    .header-sub {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .status-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: #D1D5DB;
-      flex-shrink: 0;
-      transition: background .3s;
-    }
-    .status-dot.running { background: var(--teal); box-shadow: 0 0 0 4px rgba(0, 184, 169, 0.15); }
-    .status-dot.paused  { background: #F59E0B; box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15); }
-    .status-dot.done    { background: var(--green); box-shadow: 0 0 0 4px rgba(5, 118, 66, 0.15); }
-
-    .content {
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      padding: 20px;
-      gap: 20px;
-    }
-
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-    }
-
-    .stat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 14px;
-      text-align: center;
-      box-shadow: var(--shadow);
-    }
-
-    .stat-label {
-      font-size: 12px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-weight: 600;
-      margin-bottom: 6px;
-    }
-
-    .stat-value {
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--li-blue);
-    }
-    .stat-value.done   { color: var(--green); }
-    .stat-value.fail   { color: var(--red); }
-    .stat-value.remain { color: var(--teal); }
-
-    .progress-section {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 16px;
-      box-shadow: var(--shadow);
-    }
-
-    .progress-label {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-      font-size: 13px;
-      font-weight: 600;
-    }
-
-    .progress-track {
-      height: 18px;
-      background: var(--border);
-      border-radius: 999px;
-      overflow: hidden;
-      margin-bottom: 10px;
-    }
-
-    .progress-bar {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, var(--li-blue), var(--teal));
-      border-radius: 999px;
-      transition: width .3s ease;
-    }
-
-    .current-profile {
-      font-size: 12px;
-      color: var(--text-muted);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      padding: 8px;
-      background: #f5f7fa;
-      border-radius: var(--radius-sm);
-      border-left: 3px solid var(--li-blue);
-    }
-
-    .controls {
-      display: flex;
-      gap: 10px;
-      flex-shrink: 0;
-      padding: 16px 20px;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      justify-content: flex-end;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 16px;
-      border: none;
-      border-radius: var(--radius-sm);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all .15s;
-    }
-    .btn:disabled { opacity: .4; cursor: not-allowed; }
-
-    .btn-primary {
-      background: var(--li-blue);
-      color: white;
-    }
-    .btn-primary:hover:not(:disabled) { background: var(--li-blue-dk); }
-
-    .btn-warning {
-      background: #F59E0B;
-      color: white;
-    }
-    .btn-warning:hover:not(:disabled) { background: #D97706; }
-
-    .btn-success {
-      background: var(--green);
-      color: white;
-    }
-    .btn-success:hover:not(:disabled) { background: #045a32; }
-
-    .btn-danger {
-      background: var(--red);
-      color: white;
-    }
-    .btn-danger:hover:not(:disabled) { background: #a30d12; }
-
-    .log-section {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 12px;
-      max-height: 200px;
-      overflow-y: auto;
-      box-shadow: var(--shadow);
-    }
-
-    .log-item {
-      font-size: 12px;
-      padding: 6px 8px;
-      border-left: 3px solid var(--border);
-      margin-bottom: 6px;
-      background: #fafbfc;
-      border-radius: 4px;
-    }
-    .log-item:last-child { margin-bottom: 0; }
-    .log-item.ok { border-left-color: var(--green); color: var(--green); }
-    .log-item.fail { border-left-color: var(--red); color: var(--red); }
-    .log-item.info { border-left-color: var(--text-muted); color: var(--text-muted); }
-
-    .hidden {
-      display: none !important;
-    }
-  </style>
+  <title>LinkedIn PDF Downloader - Progress Monitor</title>
+  <link rel="stylesheet" href="styles/progress.css" />
 </head>
 <body>
-
   <div class="shell">
-
+    <!-- Header -->
     <header class="header">
       <div class="header-logo">
-        <svg width="26" height="26" viewBox="0 0 22 22" fill="none">
+        <svg width="24" height="24" viewBox="0 0 22 22" fill="none">
           <rect width="22" height="22" rx="4" fill="#0A66C2"/>
           <path d="M5 8.5H7.8V17H5V8.5ZM6.4 7.3C5.52 7.3 5 6.75 5 6.05C5 5.33 5.54 4.8 6.43 4.8C7.32 4.8 7.82 5.33 7.84 6.05C7.84 6.75 7.32 7.3 6.4 7.3ZM17 17H14.2V12.4C14.2 11.24 13.78 10.44 12.76 10.44C11.98 10.44 11.5 10.98 11.28 11.5C11.2 11.7 11.18 11.98 11.18 12.26V17H8.38V9.26C8.38 8.14 8.34 7.2 8.3 8.5H8.38V8.5H11.04L11.1 9.74C11.48 9.14 12.16 8.3 13.74 8.3C15.7 8.3 17 9.42 17 12.06V17Z" fill="white"/>
         </svg>
       </div>
       <div class="header-text">
-        <div class="header-title">LinkedIn PDF Downloader</div>
-        <div class="header-sub">Real-time Progress Monitor</div>
+        <h1 class="header-title">Progress Monitor</h1>
+        <span class="header-sub">LinkedIn PDF Downloader</span>
       </div>
-      <div class="status-dot" id="status-dot" title="Running"></div>
+      <div class="status-dot" id="status-dot" title="Idle"></div>
     </header>
 
+    <!-- Content -->
     <div class="content">
+      <!-- Stats Grid -->
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="stat-label">Done</div>
+          <div class="stat-label">Downloaded</div>
           <div class="stat-value done" id="stat-done">0</div>
         </div>
         <div class="stat-card">
@@ -286,30 +41,45 @@
         </div>
       </div>
 
+      <!-- Progress Section -->
       <div class="progress-section">
         <div class="progress-label">
-          <span>Progress</span>
           <span id="progress-frac">0 / 0</span>
         </div>
         <div class="progress-track">
           <div class="progress-bar" id="progress-bar"></div>
         </div>
-        <div class="current-profile" id="current-url">Waiting...</div>
+        <div class="current-activity" id="current-url">—</div>
       </div>
 
-      <div class="log-section" id="log-section">
-        <div class="log-item info">⏱️ Process started. Monitor progress in real-time...</div>
-      </div>
+      <!-- Activity Log -->
+      <div class="log-section" id="log-section"></div>
     </div>
 
+    <!-- Controls -->
     <div class="controls">
-      <button class="btn btn-warning" id="pause-btn">Pause</button>
-      <button class="btn btn-success hidden" id="resume-btn">Resume</button>
-      <button class="btn btn-danger" id="stop-btn">Stop</button>
+      <button class="btn btn-warning" id="pause-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="4" width="4" height="16" rx="1"/>
+          <rect x="14" y="4" width="4" height="16" rx="1"/>
+        </svg>
+        Pause
+      </button>
+      <button class="btn btn-success hidden" id="resume-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5,3 19,12 5,21"/>
+        </svg>
+        Resume
+      </button>
+      <button class="btn btn-danger" id="stop-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12" rx="1"/>
+        </svg>
+        Stop
+      </button>
     </div>
-
   </div>
 
-  <script src="progress.js"></script>
+  <script src="src/ui/progress-script.js" type="module"></script>
 </body>
 </html>

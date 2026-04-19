@@ -23,11 +23,11 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/core/background-worker.js"
   },
   "web_accessible_resources": [
     {
-      "resources": ["progress.html", "progress.js"],
+      "resources": ["progress.html", "src/ui/progress-script.js"],
       "matches": []
     }
   ],
