@@ -1,10 +1,8 @@
 # LinkedIn Profile PDF Downloader
 
-A powerful, privacy-first chromium based plugin or browser extension for **Chrome, Edge, and Brave** that automates batch-downloading your LinkedIn connections' full profiles as PDFs.
-
+A powerful, privacy-first chromium based browser plugin or extension that automates batch-downloading your LinkedIn connections' full profiles as PDFs.
 **No external services. No tracking. No scraping. Just using the methods LinkedIn already provides. Your data stays with you.**
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-stable-brightgreen)
 
@@ -118,7 +116,7 @@ Adjust the delay between profiles using the slider above the Start button:
 - **Default**: 5 seconds
 - **Purpose**: Allows LinkedIn's PDF generation to complete before moving to the next profile
 
-On my initial time I figured out that it takes different time in different browsers, Brave can do it in 4 seconds while Microsoft Edge takes 6 seconds. Also, the wait time also depends on the internet speed, jitters and pings. So, if all combined, the wait time can easily go till 10 seconds. Hence, I have given this slider to let user tune their system as per there setup.
+In my initial tests, I figured out that it takes different time in different browsers. Brave can do it in 4 seconds while Microsoft Edge takes 6 seconds, also the wait time also depends on the internet speed, jitters and pings. So, if all combined, the wait time can easily go till 10 seconds. Hence, I have given this slider to let user tune their wait time as per there system setup.
 
 The estimated completion time updates automatically based on your selection. It's basically the number of connections times the wait time and an additional 10 seconds for buffer. It's recommended to not use the whole browser while the process takes place because there's tab based automation and the plugin may get confused with your activity with its activity.
 
