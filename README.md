@@ -6,6 +6,8 @@ A powerful, privacy-first chromium based browser plugin or extension that automa
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-stable-brightgreen)
 
+![Quick Summary](infographics.jpg)
+
 ---
 
 ## Features
@@ -37,9 +39,7 @@ A powerful, privacy-first chromium based browser plugin or extension that automa
 ### Step 1: Enable Developer Mode
 
 **Chrome:** Open `chrome://extensions` → Toggle "Developer mode" (top-right)
-
 **Edge:** Open `edge://extensions` → Toggle "Developer mode" (top-right)
-
 **Brave:** Open `brave://extensions` → Toggle "Developer mode" (top-right)
 
 ### Step 2: Load the Extension
