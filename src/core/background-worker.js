@@ -9,9 +9,9 @@
  * - Manages download folder redirect
  */
 
-import { CONSTANTS } from './src/utils/constants.js';
-import { sleep, formatTime } from './src/utils/helpers.js';
-import { broadcast } from './src/utils/message-handler.js';
+import { CONSTANTS } from '../utils/constants.js';
+import { sleep, formatTime } from '../utils/helpers.js';
+import { broadcast } from '../utils/message-handler.js';
 
 // ─────────────────────────────────────────────
 // STATE MANAGEMENT

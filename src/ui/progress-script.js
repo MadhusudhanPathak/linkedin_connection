@@ -10,9 +10,9 @@
  * - Status indicator
  */
 
-import { CONSTANTS } from './src/utils/constants.js';
-import { $, addClass, removeClass, setVisible, clearChildren } from './src/utils/helpers.js';
-import { getState, pauseProcess, resumeProcess, stopProcess } from './src/utils/message-handler.js';
+import { CONSTANTS } from '../utils/constants.js';
+import { $, addClass, removeClass, setVisible, clearChildren } from '../utils/helpers.js';
+import { getState, pauseProcess, resumeProcess, stopProcess } from '../utils/message-handler.js';
 
 // ─────────────────────────────────────────────
 // DOM REFERENCES

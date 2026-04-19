@@ -11,10 +11,10 @@
  * - Activity logging
  */
 
-import { CONSTANTS } from './src/utils/constants.js';
-import { parseCSV, isValidCsvFile } from './src/utils/csv-parser.js';
-import { $, addClass, removeClass, toggleClass, setVisible, clearChildren, formatTime, calculateEstimatedTime } from './src/utils/helpers.js';
-import { startProcess, pauseProcess, resumeProcess, stopProcess, getState } from './src/utils/message-handler.js';
+import { CONSTANTS } from '../utils/constants.js';
+import { parseCSV, isValidCsvFile } from '../utils/csv-parser.js';
+import { $, addClass, removeClass, toggleClass, setVisible, clearChildren, formatTime, calculateEstimatedTime } from '../utils/helpers.js';
+import { startProcess, pauseProcess, resumeProcess, stopProcess, getState } from '../utils/message-handler.js';
 
 // ─────────────────────────────────────────────
 // DOM REFERENCES
