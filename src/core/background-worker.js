@@ -524,7 +524,7 @@ async function clickMoreThenSaveToPDF() {
   }
 
   moreButton.click();
-  await sleep(CONSTANTS.CLICK_WAIT_MS);
+  await sleep(300); // CLICK_WAIT_MS - must be hardcoded for injected script context
 
   // Find Save to PDF in dropdown
   const dropdownSelectors = [

@@ -402,14 +402,19 @@ body {
   font-size: 10px;
   color: var(--text-muted);
   min-width: 45px;
+  margin-top: 2px;
 }
 
 .log-text {
   flex: 1;
   font-weight: 500;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .log-detail {
   font-size: 11px;
   color: var(--text-muted);
+  word-break: break-word;
+  white-space: pre-wrap;
 }

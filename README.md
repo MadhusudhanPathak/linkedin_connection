@@ -10,18 +10,6 @@ A powerful, privacy-first chromium based plugin or browser extension for **Chrom
 
 ---
 
-## Table of Contents
-
-1. [Features](#features)
-2. [Quick Start](#quick-start)
-3. [Installation](#installation)
-4. [Usage Guide](#usage-guide)
-5. [FAQ](#faq)
-6. [Architecture](#architecture)
-7. [License](#license)
-
----
-
 ## Features
 
 ### 🚀 Fast & Simple
@@ -75,7 +63,7 @@ Make sure you're fully logged in to LinkedIn before starting. The extension will
 ### 2. Prepare your CSV
 
 Create a CSV file with LinkedIn profile URLs. The extension automatically detects URLs containing `linkedin.com/in/` or `linkedin.com/pub/`.
-The most suitable way is to visit `https://www.linkedin.com/mypreferences/d/download-my-data` portal and then get your full data from LinkedIn. It will take around 24 hours, and after extracting your full data you will find a lot of csv and important files. From there you can also use the `Connections.csv` file directly.
+The most suitable way is to visit https://www.linkedin.com/mypreferences/d/download-my-data portal and then get your full data from LinkedIn. It will take around 24 hours, and after extracting your full data you will find a lot of csv and important files. From there you can also use the `Connections.csv` file directly.
 
 **Accepted formats:**
 ```
@@ -93,11 +81,11 @@ John Smith, https://www.linkedin.com/in/john-smith, Globex
 
 ### 3. Configure and Start
 
-1. Click the extension icon
-2. Upload your CSV file
-3. Adjust the wait time slider (3-15 seconds, default 5 seconds)
-4. Review the estimated completion time
-5. Click **Start Download**
+1. Click the extension icon, Upload your CSV file
+3. Adjust the wait time slider (default 5 seconds)
+4. Read the complete Troubleshooting option below
+5. Make sure the Pop-ups are enabled for LinkedIn
+6. Click **Start Download**, leave the browser open
 
 A progress monitor window will open automatically and stay visible throughout the process.
 
@@ -153,18 +141,29 @@ The estimated completion time updates automatically based on your selection. It'
 **"Not logged in" error**
 - Ensure you're logged in to LinkedIn before starting
 - Refresh your LinkedIn tab if needed
+- Ensure that your session doesn't expire in middle
+
+**Showing success but still no Downloads**
+- Ensure that the Pop-up option is enabled for LinkedIn
+- Ensure it's enabled for all the future instances
+- Disable it after downloads finish
 
 **No URLs found in CSV**
 - Check that URLs contain `linkedin.com/in/` or `linkedin.com/pub/`
 - Ensure URLs are properly formatted
+- LinkedIn's generated `Connections.csv` is recommended
 
 **Profiles being skipped**
 - Some profiles may not have the "More" button (your own profile, restricted accounts)
 - These are logged as failed but don't stop the process
+- It's a rare case, but have to respect privacy boundaries
 
 **Extension not appearing**
 - Verify Developer Mode is enabled in browser extensions
 - Check that the extension is loaded and enabled
+- Reload and refresh the extension page
+
+For anything else feel free to reach me out through email, madhu.sudhan.pathak.ais@gmail.com
 
 ---
 
