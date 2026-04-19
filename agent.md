@@ -1,22 +1,28 @@
-# AGENT.md — LinkedIn Profile PDF Downloader (Browser Extension)
+# AGENT.md — LinkedIn Connection PDF Downloader (Browser Extension)
 
 ## Project Overview
 
-A **Manifest V3 browser extension** for Chromium-based browsers (Edge, Chrome, Brave) that batch-downloads LinkedIn connection profiles as PDFs. It automates what a user would do manually: navigate to each profile, click **More → Save to PDF**, and wait for the download to complete — then move to the next profile.
+A **Manifest V3 browser extension** for Chromium-based browsers (Edge, Chrome, Brave) that batch-downloads LinkedIn connection profiles as PDFs. It automates the "More → Save to PDF" process with a streamlined, fast workflow.
 
-No Playwright, no Puppeteer, no external server. Runs entirely inside the browser as a standard extension.
+No complex monitoring, no waiting for downloads to complete - just click and move forward. Includes a persistent progress monitor window.
+
+**GitHub Repository:** https://github.com/MadhusudhanPathak/linkedin_connection
 
 ---
 
 ## File Structure
 
 ```
-linkedin-pdf-downloader/
+linkedin_connection/
 ├── manifest.json      # MV3 extension config
-├── background.js      # Service worker — all automation logic lives here
-├── popup.html         # Extension popup UI shell
+├── background.js      # Service worker — main automation logic
+├── popup.html         # Extension popup UI
 ├── popup.css          # Popup styles
-├── popup.js           # Popup logic, CSV parsing, UI state
+├── popup.js           # Popup logic, CSV parsing, UI controls
+├── progress.html      # Persistent progress monitor window
+├── progress.js        # Progress monitor logic and real-time updates
+├── README.md          # User documentation
+├── agent.md           # This technical reference
 └── icons/
     ├── icon16.png
     ├── icon32.png
@@ -31,28 +37,213 @@ linkedin-pdf-downloader/
 ### Communication Pattern
 ```
 popup.js  ──[chrome.runtime.sendMessage]──►  background.js
-background.js  ──[chrome.runtime.sendMessage (broadcast)]──►  popup.js
+background.js  ──[chrome.runtime.sendMessage (broadcast)]──►  popup.js, progress.js
+progress.js  ──[chrome.runtime.sendMessage]──►  background.js
 ```
 
 Popup sends commands: `START`, `PAUSE`, `RESUME`, `STOP`, `GET_STATE`.
-Background broadcasts events: `PROCESSING`, `RESULT`, `CHUNK_DONE`, `PAUSED`, `RESUMED`, `NOT_LOGGED_IN`, `DONE`.
+Background broadcasts events: `PROCESSING`, `RESULT`, `PAUSED`, `RESUMED`, `NOT_LOGGED_IN`, `DONE`.
+Progress monitor listens for broadcasts and sends control commands.
 
 ### Processing Flow (per profile)
 ```
 Open background tab
   → waitForTabLoad (onUpdated event, 30s timeout)
-  → sleep 3500ms  (LinkedIn JS render settle time)
-  → executeScript: scrapePageInfo()  (login check + name scrape)
-  → arm chrome.downloads.onCreated listener
-  → executeScript: clickMoreThenSaveToPDF()  (injected async fn)
-  → waitForCondition: capturedDownloadId !== null  (30s timeout)
-  → waitForDownloadComplete(downloadId)  (onChanged, 60s timeout)
+  → executeScript: checkLoginAndGetName()  (login check + name scrape)
+  → executeScript: clickSaveToPDF()  (click More → Save to PDF)
+  → wait user-specified time (3-15 seconds)
   → chrome.tabs.remove(tabId)
-  → sleep 3000ms  (delay before next profile)
   → runNext()
 ```
 
-**Critical ordering:** The tab is closed only after the download fully completes. The 3s inter-profile delay runs after the download, not concurrently with it.
+**Simplified approach:** No download monitoring - just click "Save to PDF" and wait the user-configured time before moving to the next profile.
+
+---
+
+## Key Design Decisions
+
+### Simplified Processing
+Removed complex download detection and waiting logic. The extension now trusts that LinkedIn's PDF generation will complete within the user-specified wait time. This eliminates false positives and stuck states while maintaining reliability.
+
+### User-Configurable Timing
+Wait time between profiles is now user-controlled via a slider (3-15 seconds, default 5s). This allows users to adjust based on their internet speed and LinkedIn's responsiveness.
+
+### Persistent Progress Monitor
+A dedicated progress window opens in a new tab and stays visible throughout the process, solving the issue where progress disappeared when the popup was minimized.
+
+### Automatic Folder Organization
+PDFs are automatically redirected to a `LinkedIn_Connections` subfolder using `chrome.downloads.onDeterminingFilename`.
+
+### MV3 Service Worker Keep-Alive
+`chrome.alarms` fires every 20s during processing to prevent the service worker from being killed.
+
+---
+
+## State Object (background.js)
+
+```js
+state = {
+  isRunning:    Boolean,   // true while processing is active
+  isPaused:     Boolean,   // true when user has paused
+  urls:         String[],  // profile URLs from CSV
+  currentIndex: Number,    // next URL to process
+  results:      Array,     // { url, success, name?, reason? } per profile
+  startTime:    Number,    // Date.now() at START
+  waitTime:     Number,    // user-selected wait time in ms
+}
+```
+
+---
+
+## Constants (background.js)
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `TAB_LOAD_TIMEOUT_MS` | 30000 | Max ms to wait for tab load |
+| `DEFAULT_WAIT_TIME_MS` | 5000 | Default wait time (5 seconds) |
+| `MIN_WAIT_TIME_MS` | 3000 | Minimum slider value (3 seconds) |
+| `MAX_WAIT_TIME_MS` | 15000 | Maximum slider value (15 seconds) |
+
+---
+
+## Injected Functions
+
+### `checkLoginAndGetName()`
+Checks login state and extracts the profile name.
+
+Returns: `{ isLoggedIn: Boolean, name: String }`
+
+Login signals (any 1 = logged in):
+- `#global-nav`, `.global-nav`, `nav[aria-label="Global Navigation"]`
+- `.global-nav__me`, `.scaffold-layout`, `.application-outlet`
+- `[data-member-id]`, `.pvs-profile-actions`
+- Cookie `li_at=`, Cookie `JSESSIONID=`
+- Fallback: URL contains `/in/` AND `body.innerText.length > 500`
+
+Name selectors tried in order:
+- `h1.text-heading-xlarge`
+- `.pv-text-details__left-panel h1`
+- `.artdeco-entity-lockup__title h1`
+- `.ph5 h1`
+- `section.artdeco-card h1`
+- `main h1`
+- `h1` (fallback)
+
+### `clickSaveToPDF()`
+Finds and clicks the "More" button, then "Save to PDF" in the dropdown.
+
+Returns: `{ success: Boolean, reason?: String }`
+
+More button: `button` or `[role="button"]` with `innerText === 'More'` or appropriate aria-label.
+
+Save to PDF detection:
+1. `.artdeco-dropdown__content-inner li`
+2. `.artdeco-dropdown__item`
+3. `.pvs-overflow-actions-dropdown__content li`
+4. `[role="menu"] [role="menuitem"]`
+5. `[role="listbox"] [role="option"]`
+6. `ul[role="menu"] li`
+7. Any element with `innerText === 'Save to PDF'`
+
+---
+
+## Popup UI
+
+### Sections
+- **Header** — title and status
+- **Upload section** — CSV drag-and-drop/file picker (hidden during processing)
+- **Wait Time Slider** — 3-15 second range with live estimate update
+- **Time Estimate** — calculated completion time
+- **Progress section** — progress bar and current status (shown during processing)
+- **Controls** — Start/Pause/Resume/Stop buttons
+- **Stats** — Done/Failed/Remaining counts
+- **Log** — activity feed (shown during processing)
+
+### Button States
+| State | Start | Pause | Resume | Stop |
+|---|---|---|---|---|
+| idle | ✅ | hidden | hidden | hidden |
+| running | hidden | ✅ | hidden | ✅ |
+| paused | hidden | hidden | ✅ | ✅ |
+
+### CSV Parsing
+Scans all cells for `linkedin.com/in/` or `linkedin.com/pub/`. Auto-detects headers, deduplicates, normalizes URLs.
+
+---
+
+## Progress Monitor Window
+
+### Features
+- **Real-time Stats**: Done/Failed/Remaining counts
+- **Progress Bar**: Visual completion indicator
+- **Current Activity**: Shows active profile being processed
+- **Activity Log**: Color-coded entries with timestamps
+- **Control Buttons**: Pause/Resume/Stop functionality
+- **Persistent**: Stays open in separate tab, doesn't disappear when popup is minimized
+
+### Communication
+Listens for `chrome.runtime.onMessage` broadcasts from background.js and updates UI accordingly. Sends control commands back to background.js.
+
+---
+
+## Permissions
+
+```json
+["tabs", "downloads", "scripting", "storage", "alarms"]
+```
+
+Host permissions: `https://www.linkedin.com/*`
+
+---
+
+## Error Handling
+
+| Error | Behavior |
+|---|---|
+| Not logged in | Process halts immediately |
+| "More" button not found | Profile skipped, logged as failed |
+| "Save to PDF" not found | Profile skipped, logged as failed |
+| Tab load timeout | Profile skipped, logged as failed |
+
+Failed profiles don't stop the batch process.
+
+---
+
+## Implementation Notes
+
+### Folder Organization
+Uses `chrome.downloads.onDeterminingFilename` to redirect PDFs to `LinkedIn_Connections/` subfolder.
+
+### Timing Calculation
+Estimated time = (waitTime × profileCount) + 10 seconds overhead.
+
+### State Persistence
+Basic state maintained in memory; no cross-session persistence yet.
+
+### Browser Compatibility
+Works in all Chromium-based browsers supporting Manifest V3.
+
+---
+
+## Evolution from Previous Version
+
+| Previous Approach | Current Approach | Reason |
+|---|---|---|
+| Complex download monitoring | Simple click-and-wait | Eliminated false stuck states |
+| Fixed 3s wait time | User-configurable 3-15s | Better user control |
+| Popup-only progress | Persistent monitor window | Progress stays visible |
+| Chunk-based display | Continuous processing | Simplified logic |
+| Download completion wait | Trust user timing | Faster, more reliable |
+
+---
+
+## Potential Future Enhancements
+
+- **Resume across sessions** — persist state to chrome.storage
+- **Export results** — CSV download of success/failure log
+- **Rate limit detection** — auto-pause on LinkedIn blocks
+- **Advanced error recovery** — retry failed profiles
+- **Custom filename patterns** — user-defined PDF naming
 
 ---
 
