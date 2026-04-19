@@ -1,4 +1,4 @@
-# LinkedIn Profile PDF Downloader
+# LinkedIn Connection Complete Profile Downloader
 
 A powerful, privacy-first chromium based browser plugin or extension that automates batch-downloading your LinkedIn connections' full profiles as PDFs.
 **No external services. No tracking. No scraping. Just using the methods LinkedIn already provides. Your data stays with you.**
