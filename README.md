@@ -10,6 +10,18 @@ A powerful, privacy-first chromium based browser plugin or extension that automa
 
 ---
 
+Here's the updated disclaimer:
+
+---
+
+> **⚠️ Disclaimer**
+>
+> This extension automates browser activity on LinkedIn, which may conflict with LinkedIn's [User Agreement](https://www.linkedin.com/legal/user-agreement) (Section 8.2), which explicitly prohibits the use of browser plugins, add-ons, or any automated methods to access, copy, or download profiles and data from the platform — regardless of whether LinkedIn's own built-in features are used to perform those actions. While this tool operates entirely locally with no data sent to external servers, LinkedIn actively monitors for automated tab activity and unusual usage patterns, and may respond by temporarily restricting or permanently banning your account without prior notice. **Use this tool strictly at your own risk.** The author(s) accept no liability for any account suspension, data loss, or legal consequences arising from its use.
+>
+> LinkedIn's official [data export portal](https://www.linkedin.com/mypreferences/d/download-my-data) is the fully compliant alternative, but it only provides a minimal CSV with basic fields like name, company, and email, falling far short of a complete profile snapshot. This tool exists to fill that gap, while acknowledging the policy trade-offs involved. So again, **Use this tool strictly at your own risk.**
+
+---
+
 ## Features
 
 ### 🚀 Fast & Simple
