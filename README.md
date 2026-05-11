@@ -10,8 +10,8 @@ A powerful, privacy-first chromium based browser plugin or extension that automa
 
 ---
 
-Here's the updated disclaimer:
-
+YouTube Video:
+https://youtu.be/S-oznY9f-oU
 ---
 
 > **⚠️ Disclaimer**
